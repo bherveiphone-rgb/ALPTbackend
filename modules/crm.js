@@ -326,14 +326,14 @@ export function crmRoutes(router, ctx) {
   });
 
   router.post("/public/form/upload", wrap((req, res) => {
-    if (!rateLimit("up:" + req.ip, 30, 36e5)) return res.status(429).json({ error: "Trop d'envois, réessayez plus tard." });
+    if (!rateLimit("up:" + req.ip, 60, 36e5)) return res.status(429).json({ error: "Trop d'envois, réessayez plus tard." });
     res.json({ ...saveDataUrl(ctx.uploadsDir, req.body?.dataUrl, { maxMb: 15 }), name: clean(req.body?.name, 200) });
   }));
 
   router.post("/public/request", wrap(async (req, res) => {
     const b = req.body || {};
     if (b.website) return res.json({ ok: true }); // pot de miel anti-robot
-    if (!rateLimit("rq:" + req.ip, 6, 36e5)) return res.status(429).json({ error: "Trop de demandes envoyées, réessayez plus tard ou contactez-nous." });
+    if (!rateLimit("rq:" + req.ip, 20, 36e5)) return res.status(429).json({ error: "Trop de demandes envoyées, réessayez plus tard ou contactez-nous." });
     const email = normEmail(b.contact?.email);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Adresse email invalide.");
     if (!clean(b.contact?.contact).trim() && !clean(b.contact?.company).trim()) throw new Error("Indiquez votre nom ou votre structure.");

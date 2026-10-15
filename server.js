@@ -20,6 +20,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
 const app = express();
+// Derrière un hébergeur / proxy (Render, OVH, Nginx…) : TRUST_PROXY=1 pour connaître la vraie IP des visiteurs
+if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use(cors());
 // Outil Devis & BAT : back-office sur /devis/, portail client sur /devis/client.html
 // (monté avant le parseur JSON global : il accepte des fichiers BAT plus lourds)

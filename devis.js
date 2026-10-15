@@ -240,15 +240,17 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
 
   // Envoi du devis au client (marque "envoyé" + email si boîte connectée)
   router.post("/quotes/:id/send", requireAdmin, wrap(async (req, res) => {
-    const quotes = db.get("quotes");
-    const q = findQuote(quotes, req.params.id);
-    const link = ctx.clientLink(q, req);
+    const before = findQuote(db.get("quotes"), req.params.id);
+    const link = ctx.clientLink(before, req);
     let mailed = false;
     if (req.body?.email && req.body?.to) {
-      await mail.send({ to: clean(req.body.to, 300), subject: clean(req.body.subject, 300) || `Votre devis ${q.number}`, text: clean(req.body.message, 10000) });
+      await mail.send({ to: clean(req.body.to, 300), subject: clean(req.body.subject, 300) || `Votre devis ${before.number}`, text: clean(req.body.message, 10000) });
       mailed = true;
-      ctx.addActivity({ type: "email_out", clientId: q.clientId, quoteId: q.id, text: `Devis ${q.number} envoyé par email à ${req.body.to}`, subject: clean(req.body.subject, 300) });
+      ctx.addActivity({ type: "email_out", clientId: before.clientId, quoteId: before.id, text: `Devis ${before.number} envoyé par email à ${req.body.to}`, subject: clean(req.body.subject, 300) });
     }
+    // relecture après l'envoi : on ne réécrit pas une version périmée du fichier
+    const quotes = db.get("quotes");
+    const q = findQuote(quotes, req.params.id);
     if (q.status === "brouillon") q.status = "envoye";
     q.sentAt = Date.now(); q.updatedAt = Date.now();
     log(q, "send", mailed ? `Devis envoyé par email à ${req.body.to}` : "Devis marqué comme envoyé (lien partagé)");
@@ -308,14 +310,12 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     const text = clean(req.body.text, 5000).trim();
     if (!text) return res.status(400).json({ error: "Message vide" });
     if (req.body.internal) log(q, "note", text);
-    else {
-      (q.messages ||= []).push({ id: uid("m"), at: Date.now(), from: "atelier", text, files: cleanFiles(req.body.files) });
-      if (req.body.email && q.client?.email) {
-        await mail.trySend({ to: q.client.email, subject: `Nouveau message — devis ${q.number}`, text: `${text}\n\nRépondre ou consulter votre dossier : ${ctx.clientLink(q, req)}` });
-      }
-    }
+    else (q.messages ||= []).push({ id: uid("m"), at: Date.now(), from: "atelier", text, files: cleanFiles(req.body.files) });
     q.updatedAt = Date.now();
     db.set("quotes", quotes);
+    if (!req.body.internal && req.body.email && q.client?.email) {
+      await mail.trySend({ to: q.client.email, subject: `Nouveau message — devis ${q.number}`, text: `${text}\n\nRépondre ou consulter votre dossier : ${ctx.clientLink(q, req)}` });
+    }
     res.json(q);
   }));
 

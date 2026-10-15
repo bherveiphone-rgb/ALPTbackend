@@ -143,14 +143,21 @@ export function pennylaneRoutes(router, ctx) {
     rec ? res.json(rec) : res.status(404).json({ error: "Facture introuvable" });
   }));
 
-  /** Met à jour numéro, statut et lien PDF depuis Pennylane ; solde le devis quand tout est payé. */
-  async function syncQuote(q) {
-    let changed = 0;
+  /** Interroge Pennylane pour les factures du devis (réseau, sans rien écrire). */
+  async function fetchRemote(q) {
+    const out = {};
     for (const i of (q.invoices || []).filter(x => x.provider === "pennylane" && x.pennylaneId)) {
       const inv = await pl("GET", `/customer_invoices/${i.pennylaneId}`);
-      const paid = !!(inv.paid || inv.status === "paid");
-      const next = { number: inv.invoice_number || i.number, status: inv.status || i.status, paid, url: inv.public_file_url || inv.file_url || i.url };
-      if (JSON.stringify(next) !== JSON.stringify({ number: i.number, status: i.status, paid: i.paid, url: i.url })) { Object.assign(i, next); changed++; }
+      out[i.id] = { number: inv.invoice_number || i.number, status: inv.status || i.status, paid: !!(inv.paid || inv.status === "paid"), url: inv.public_file_url || inv.file_url || i.url };
+    }
+    return out;
+  }
+  /** Applique les données Pennylane au devis ; solde le devis quand tout est payé. Synchrone. */
+  function applyRemote(q, remote) {
+    let changed = 0;
+    for (const i of q.invoices || []) {
+      const next = remote[i.id];
+      if (next && JSON.stringify(next) !== JSON.stringify({ number: i.number, status: i.status, paid: i.paid, url: i.url })) { Object.assign(i, next); changed++; }
     }
     const live = (q.invoices || []).filter(i => i.status !== "annulee");
     if (live.length && live.every(i => i.paid) && live.some(i => i.kind !== "acompte") && q.payment?.status !== "paye") {
@@ -164,24 +171,25 @@ export function pennylaneRoutes(router, ctx) {
     }
     return changed;
   }
+  async function syncQuote(id) {
+    const q = db.get("quotes").find(x => x.id === id);
+    if (!q) return { changed: 0, q: null };
+    const remote = await fetchRemote(q);
+    return db.update("quotes", qs => { const x = qs.find(y => y.id === id); return x ? { changed: applyRemote(x, remote), q: x } : { changed: 0, q: null }; });
+  }
   ctx.pennylaneSync = async () => {
     if (!key()) return 0;
-    const quotes = db.get("quotes");
     let n = 0;
-    for (const q of quotes.filter(x => (x.invoices || []).some(i => i.provider === "pennylane" && !i.paid))) {
-      try { n += await syncQuote(q); } catch (e) { console.error("Synchro Pennylane :", e.message); }
+    for (const q of db.get("quotes").filter(x => (x.invoices || []).some(i => i.provider === "pennylane" && !i.paid))) {
+      try { n += (await syncQuote(q.id)).changed; } catch (e) { console.error("Synchro Pennylane :", e.message); }
     }
-    if (n) db.set("quotes", quotes);
     return n;
   };
 
   router.post("/quotes/:id/invoice/sync", requireAdmin, wrap(async (req, res) => {
-    const quotes = db.get("quotes");
-    const q = quotes.find(x => x.id === req.params.id);
+    const { changed, q } = await syncQuote(req.params.id);
     if (!q) return res.status(404).json({ error: "Devis introuvable" });
-    const n = await syncQuote(q);
-    db.set("quotes", quotes);
-    res.json({ changed: n, invoices: q.invoices, payment: q.payment });
+    res.json({ changed, invoices: q.invoices, payment: q.payment });
   }));
   router.post("/pennylane/sync", requireAdmin, wrap(async (_req, res) => res.json({ changed: await ctx.pennylaneSync() })));
 }
