@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createDevisRouter } from "./devis.js";
 
 dotenv.config();
 
@@ -20,6 +21,10 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
 const app = express();
 app.use(cors());
+// Outil Devis & BAT : back-office sur /devis/, portail client sur /devis/client.html
+// (monté avant le parseur JSON global : il accepte des fichiers BAT plus lourds)
+app.use("/api/devis", createDevisRouter({ dataDir: DATA_DIR, uploadsDir: UPLOADS_DIR, adminPassword: ADMIN_PASSWORD, stripe }));
+app.use("/devis", express.static(path.join(__dirname, "public", "devis")));
 app.use(express.json({ limit: "8mb" })); // marge pour l'upload d'images en base64
 app.use("/uploads", express.static(UPLOADS_DIR)); // sert les photos produits
 
@@ -304,6 +309,7 @@ app.listen(PORT, () => {
   console.log(`✅ Backend Élan Club sur http://localhost:${PORT}`);
   console.log(`   Boutique  : http://localhost:3000/index.html`);
   console.log(`   Back office: http://localhost:3000/admin.html`);
+  console.log(`   Devis & BAT: http://localhost:${PORT}/devis/`);
   if (!process.env.STRIPE_SECRET_KEY) {
     console.warn("⚠️  STRIPE_SECRET_KEY manquante — créez un fichier .env (voir .env.example)");
   }

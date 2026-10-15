@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Votre devis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: var(--bg); }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 0 20px 80px; }
+    .top { background: var(--surface); border-bottom: 1px solid var(--border); }
+    .top .wrap { display: flex; align-items: center; gap: 14px; padding-top: 14px; padding-bottom: 14px; }
+    .top img { max-height: 44px; max-width: 160px; object-fit: contain; }
+    .hero { background: linear-gradient(135deg, #1e1b4b, #4f46e5 60%, #7c3aed); color: #fff; border-radius: 18px; padding: 28px; margin: 24px 0 18px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: end; box-shadow: var(--shadow-lg); }
+    .hero h1 { font-size: 26px; }
+    .hero .amount { font-size: 34px; font-weight: 800; letter-spacing: -.02em; text-align: right; }
+    .hero small { color: rgba(255,255,255,.75); }
+    .hero .btn { border-color: rgba(255,255,255,.35); }
+    .steps { display: flex; gap: 0; margin: 0 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; overflow-x: auto; }
+    .step { flex: 1; display: flex; align-items: center; gap: 9px; min-width: 130px; color: var(--faint); font-weight: 600; font-size: 13px; position: relative; }
+    .step .n { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; flex: none; background: var(--surface); }
+    .step.done { color: var(--success); } .step.done .n { background: var(--success); border-color: var(--success); color: #fff; }
+    .step.cur { color: var(--primary); } .step.cur .n { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 4px var(--primary-50); }
+    .step + .step::before { content: ""; position: absolute; left: -14px; width: 10px; height: 2px; background: var(--border-strong); }
+    .callout { border-radius: 14px; padding: 16px 18px; display: flex; gap: 14px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+    .callout .grow { flex: 1; min-width: 220px; }
+    .bat-hero { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .bat-hero .bat-file { aspect-ratio: auto; min-height: 280px; max-height: 620px; }
+    .bat-hero .bat-file img { max-height: 620px; }
+    .checklist label { display: flex; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; align-items: flex-start; }
+    .checklist label + label { margin-top: 6px; }
+    .checklist input { margin-top: 2px; width: 17px; height: 17px; accent-color: var(--success); flex: none; }
+    .lines-t td { vertical-align: top; }
+    .persos { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted); }
+    .persos li::before { content: "◆ "; color: var(--primary); font-size: 9px; }
+    @media (max-width: 700px) {
+      .hero { grid-template-columns: 1fr; } .hero .amount { text-align: left; }
+      .lines-t thead { display: none; } .lines-t tr { display: grid; grid-template-columns: 1fr auto; } .lines-t td { border: 0 !important; padding: 6px 12px; }
+      .lines-t tr { border-bottom: 1px solid var(--border); padding: 8px 0; } .lines-t td.hide-m { display: none; }
+    }
+    /* ---- Impression A4 ---- */
+    .doc { background: #fff; max-width: 820px; margin: 24px auto; padding: 42px 48px; box-shadow: var(--shadow-lg); border-radius: 6px; font-size: 12.5px; }
+    .doc h1 { font-size: 24px; color: var(--primary); }
+    .doc .hdr { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 30px; }
+    .doc .box { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; min-width: 240px; }
+    .doc table.t th { background: #f4f5fb; font-size: 10.5px; }
+    .doc table.t td { padding: 8px 10px; font-size: 12px; }
+    .doc .tot { margin-left: auto; width: 290px; margin-top: 14px; }
+    .doc .foot { margin-top: 28px; font-size: 10.5px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 12px; }
+    @media print {
+      @page { size: A4; margin: 12mm; }
+      .doc { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+      tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"><div class="empty" style="padding-top:120px">Chargement de votre devis…</div></div>
+  <script type="module" src="client.js"></script>
+</body>
+</html>
