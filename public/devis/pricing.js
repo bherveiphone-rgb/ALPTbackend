@@ -226,6 +226,7 @@ export const QUOTE_STATUSES = {
   accepte: { label: "Accepté", tone: "success" },
   refuse: { label: "Refusé", tone: "danger" },
   production: { label: "En production", tone: "violet" },
+  expedie: { label: "Expédié", tone: "info" },
   livre: { label: "Livré", tone: "success" },
   annule: { label: "Annulé", tone: "neutral" },
 };

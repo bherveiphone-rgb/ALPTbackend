@@ -9,7 +9,7 @@ const root = $("#root");
 let D = null;
 
 async function call(method, url, body) {
-  const res = await fetch(`/api/devis/public/${encodeURIComponent(TOKEN)}${url}`, {
+  const res = await fetch(`/api/devis/public/quote/${encodeURIComponent(TOKEN)}${url}`, {
     method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
