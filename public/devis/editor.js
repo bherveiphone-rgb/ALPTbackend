@@ -2,6 +2,19 @@
 import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, ago, uid, num, clone, uploadFile, bindDrop, lightbox, pickFiles } from "./ui.js";
 import { computeQuote, lineQty, resolveFormat, QUOTE_STATUSES, BAT_STATUSES, batStatusOf } from "./pricing.js";
 import { reloadQuotes, clientModal, clientSnapshot, CLIENT_FIELDS, statusBadge, batBadge, newQuote } from "./app.js";
+import { emailComposer, taskModal, activityModal } from "./contacts.js";
+import { render as renderTpl } from "./tpl.js";
+
+/** Variables des modèles d'emails pour ce devis (mêmes noms que côté serveur). */
+function tplVars(q, extra = {}) {
+  const T = q.computed?.totals || {};
+  return {
+    contact: q.client?.contact || "", client: q.client?.company || q.client?.contact || "", numero: q.number, objet: q.title || "votre projet",
+    lien: q.link, montant_ht: fmtEUR(T.ht), montant_ttc: fmtEUR(T.ttc), acompte: fmtEUR(T.deposit), atelier: S.settings.company.name,
+    signature: S.settings.emailSignature || S.settings.company.name || "", date_limite: q.validUntil ? new Date(q.validUntil).toLocaleDateString("fr-FR") : "",
+    version: (q.bats || []).length, ...extra,
+  };
+}
 
 const DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "2XL", "3XL"];
 const E = { q: null, techniques: [], dirty: false, tab: "devis", c: null, setupKeys: "", staged: [] };
@@ -29,7 +42,7 @@ async function save(silent = false) {
   try {
     const saved = await api("PUT", `/quotes/${q.id}`, {
       title: q.title, clientId: q.clientId, client: q.client, lines: q.lines, fees: q.fees, discountPct: q.discountPct,
-      shipping: q.shipping, vatRate: q.vatRate, depositPct: q.depositPct, validUntil: q.validUntil, leadTime: q.leadTime,
+      shipping: q.shipping, vatRate: q.vatRate, depositPct: q.depositPct, validUntil: q.validUntil, leadTime: q.leadTime, deadline: q.deadline,
       notes: q.notes, internalNotes: q.internalNotes, setupOverrides: q.setupOverrides, status: q.status,
     });
     load(saved);
@@ -106,7 +119,8 @@ function drawQuoteTab(body) {
     <div class="card"><div class="card-h"><h2>Informations</h2></div><div class="card-b"><div class="grid g3">
       <label class="f" style="grid-column:span 3"><span>Objet du devis</span><input type="text" id="title" value="${h(q.title)}" placeholder="Ex. : Tenues saison 2026 — section running"></label>
       <label class="f"><span>Valable jusqu'au</span><input type="date" id="validUntil" value="${validDate}"></label>
-      <label class="f" style="grid-column:span 2"><span>Délai de production</span><input type="text" id="leadTime" value="${h(q.leadTime)}"></label>
+      <label class="f"><span>Livraison souhaitée le</span><input type="date" id="deadline" value="${q.deadline ? new Date(q.deadline).toISOString().slice(0, 10) : ""}"></label>
+      <label class="f"><span>Délai de production</span><input type="text" id="leadTime" value="${h(q.leadTime)}"></label>
     </div></div></div>
 
     <div>
@@ -143,6 +157,7 @@ function drawQuoteTab(body) {
   const bind = (id, fn) => $("#" + id).addEventListener("input", e => { fn(e.target.value); setDirty(); recalc(); });
   bind("title", v => q.title = v);
   bind("leadTime", v => q.leadTime = v);
+  bind("deadline", v => q.deadline = v ? new Date(v + "T12:00:00").getTime() : null);
   bind("validUntil", v => q.validUntil = v ? new Date(v + "T23:59:00").getTime() : null);
   bind("discountPct", v => q.discountPct = num(v) ?? 0);
   bind("shipping", v => q.shipping = num(v) ?? 0);
@@ -197,7 +212,7 @@ function drawClientLink() {
   const q = E.q, row = $("#clientLinkRow");
   const c = S.clients.find(x => x.id === q.clientId);
   row.innerHTML = c
-    ? `${badge("Client enregistré", "success")}<small class="muted">Lié à la fiche « ${h(c.company || c.contact)} »${c.discountPct ? ` · remise habituelle ${c.discountPct} %` : ""}</small><span class="spacer"></span><button class="btn sm ghost" id="unlink">Délier</button>`
+    ? `${badge("Client enregistré", "success")}<small class="muted">Lié à la fiche « ${h(c.company || c.contact)} »${c.discountPct ? ` · remise habituelle ${c.discountPct} %` : ""}</small><span class="spacer"></span><a class="btn sm" href="#/contacts/${c.id}">${icon("users", "sm")} Voir la fiche</a><button class="btn sm ghost" id="unlink">Délier</button>`
     : `<small class="muted">Client non enregistré.</small><span class="spacer"></span><button class="btn sm" id="saveClient">${icon("save", "sm")} Enregistrer dans mes clients</button>`;
   if (c) $("#unlink").onclick = () => { q.clientId = null; setDirty(); drawClientLink(); };
   else $("#saveClient").onclick = async () => {
@@ -468,6 +483,7 @@ function drawSummary(c) {
       <small class="muted">Coût de revient estimé ${fmtEUR(T.cost)} (textile + % de coût des techniques). Visible uniquement par vous.</small>
     </div>
     ${c.warnings.length ? `<div class="warn-list">${c.warnings.map(w => `<div>⚠ ${h(w)}</div>`).join("")}</div>` : ""}
+    ${q.production || q.payment?.status ? `<div class="row" style="margin-top:12px;gap:6px">${q.production ? `<a class="chip" href="#/production">${icon("brush", "sm")} ${h(S.settings.productionStages.find(s => s.key === q.production.stage)?.label || "")}</a><a class="chip" href="#/fiche/${q.id}">${icon("print", "sm")} Fiche de fabrication</a>` : ""}${q.payment?.status ? `<a class="chip ${q.payment.status === "paye" ? "green" : ""}" href="#/facturation">${icon("euro", "sm")} ${{ non_paye: "Non payé", acompte: "Acompte reçu", paye: "Payé" }[q.payment.status]}</a>` : ""}</div>` : ""}
     <div class="row" style="margin-top:14px">
       <button class="btn sm" id="dupQ">${icon("copy", "sm")} Dupliquer</button>
       <button class="btn sm" id="refreshQ" title="Réappliquer vos grilles tarifaires actuelles">${icon("refresh", "sm")} Actualiser tarifs</button>
@@ -502,8 +518,9 @@ async function sendModal() {
   if (E.dirty && !(await save(true))) return;
   const T = q.computed?.totals || {};
   const co = S.settings.company;
-  const subject = `Votre devis ${q.number}${q.title ? ` — ${q.title}` : ""}`;
-  const message = `Bonjour ${q.client?.contact || ""},\n\nVeuillez trouver ci-dessous le lien vers votre devis ${q.number} d'un montant de ${fmtEUR(T.ht)} HT (${fmtEUR(T.ttc)} TTC).\n\nVous pouvez le consulter, le télécharger en PDF et l'accepter en ligne en un clic. Vous pourrez ensuite y valider votre BAT.\n\nN'hésitez pas à me contacter pour toute question.\n\n${S.settings.emailSignature || co.name || ""}`;
+  const tpl = S.settings.templates.quote_sent;
+  const subject = renderTpl(tpl.subject, tplVars(q));
+  const message = renderTpl(tpl.body, tplVars(q));
   modal({
     title: "Envoyer le devis au client", size: "wide",
     body: `<label class="f"><span>Lien personnel du client</span><div class="input-group"><input type="text" readonly value="${h(q.link)}" id="lnk"><button class="btn" id="cp" style="border-radius:0 8px 8px 0">${icon("copy", "sm")} Copier</button></div>
@@ -515,7 +532,8 @@ async function sendModal() {
     actions: [
       { label: "Marquer comme envoyé", onClick: async () => { await api("POST", `/quotes/${q.id}/send`, {}); await afterSend(); } },
       { label: "Ouvrir ma messagerie", icon: "msg", onClick: async m => {
-        location.href = mailto($("#to", m).value, $("#subj", m).value, `${$("#msg", m).value}\n\n👉 ${q.link}`);
+        const msg = $("#msg", m).value;
+        location.href = mailto($("#to", m).value, $("#subj", m).value, msg.includes(q.link) ? msg : `${msg}\n\n👉 ${q.link}`);
         await api("POST", `/quotes/${q.id}/send`, {}); await afterSend();
       } },
       ...(S.mailEnabled ? [{ label: "Envoyer l'email", cls: "primary", icon: "send", onClick: async m => {
@@ -597,7 +615,8 @@ function drawBatTab(body) {
         modal({
           title: "Prévenir le client", body: `<p style="margin-top:0">Le BAT V${r.bat.version} est en ligne. Envoyez le lien à votre client :</p><div class="input-group"><input readonly value="${h(E.q.link)}"><button class="btn" id="cp2" style="border-radius:0 8px 8px 0">${icon("copy", "sm")} Copier</button></div>`,
           actions: [{ label: "Fermer" }, { label: "Ouvrir ma messagerie", cls: "primary", icon: "msg", onClick: () => {
-            location.href = mailto(E.q.client?.email, `BAT V${r.bat.version} à valider — ${E.q.number}`, `Bonjour ${E.q.client?.contact || ""},\n\nVotre BAT est prêt. Merci de le vérifier attentivement puis de le valider en ligne (ou de demander une modification) :\n\n👉 ${E.q.link}\n\n${S.settings.emailSignature || S.settings.company.name || ""}`);
+            const t = S.settings.templates.bat_sent, v = tplVars(E.q, { version: r.bat.version });
+            location.href = mailto(E.q.client?.email, renderTpl(t.subject, v), renderTpl(t.body, v));
           } }],
           onOpen: m => { $("#cp2", m).onclick = () => { navigator.clipboard.writeText(E.q.link); toast("Lien copié"); }; },
         });
@@ -767,6 +786,7 @@ function drawFollowTab(body) {
   const acc = q.acceptance;
   body.innerHTML = `<div class="grid g2" style="align-items:start">
   <div class="stack">
+    <div class="row"><button class="btn" id="fMail">${icon("send", "sm")} Écrire un email</button><button class="btn" id="fCall">${icon("clock", "sm")} Noter un appel</button><button class="btn" id="fTask">${icon("check", "sm")} Créer une tâche</button>${q.clientId ? `<a class="btn ghost" href="#/contacts/${q.clientId}">Fiche contact →</a>` : ""}</div>
     <div class="card"><div class="card-h"><h2>Messagerie client</h2><small class="muted">visible sur l'espace client</small></div><div class="card-b">
       <div class="msgs" id="msgs" style="max-height:460px;overflow:auto">${(q.messages || []).map(m => `<div class="msg ${m.from === "atelier" ? "me" : ""}">${h(m.text)}${(m.files || []).map(f => `<div><a href="${h(f.url)}" target="_blank">📎 ${h(f.name || "fichier")}</a></div>`).join("")}<div class="when">${m.from === "atelier" ? "Vous" : h(q.client?.contact || "Client")} · ${fmtDate(m.at, true)}</div></div>`).join("") || `<div class="empty" style="padding:20px">Aucun message pour le moment.</div>`}</div>
       <div style="margin-top:12px"><textarea id="reply" rows="3" placeholder="Écrire au client…"></textarea>
@@ -786,6 +806,11 @@ function drawFollowTab(body) {
     </div></div>
   </div></div>`;
   const msgs = $("#msgs"); msgs.scrollTop = msgs.scrollHeight;
+  const refs = { clientId: q.clientId, quoteId: q.id };
+  const refresh = async () => { const r = await api("GET", `/quotes/${q.id}`); syncFollow(r); };
+  $("#fMail").onclick = () => emailComposer({ to: q.client?.email, name: q.client?.contact, subject: `Votre devis ${q.number}`, vars: tplVars(q), ...refs }, refresh);
+  $("#fCall").onclick = () => activityModal("call", refs, refresh);
+  $("#fTask").onclick = () => taskModal({ ...refs, label: q.client?.company || q.client?.contact }, refresh);
   $$("[data-lb]", body).forEach(i => i.onclick = () => lightbox(i.dataset.lb));
   $("#sendReply").onclick = async () => {
     const text = $("#reply").value.trim();

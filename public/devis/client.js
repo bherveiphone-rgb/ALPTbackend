@@ -70,13 +70,13 @@ function signModal({ title, intro, checklist = [], cta, onSubmit }) {
 }
 
 /* ---------- Rendu principal ---------- */
-const STEP_DEFS = [["Devis", "file"], ["Accepté", "check"], ["BAT validé", "image"], ["Production", "brush"], ["Livré", "sparkle"]];
+const STEP_DEFS = [["Devis", "file"], ["Accepté", "check"], ["BAT validé", "image"], ["Fabrication", "brush"], ["Expédié", "send"], ["Livré", "sparkle"]];
 function stepIndex() {
   const lastBat = D.bats[D.bats.length - 1];
-  if (D.status === "livre") return 5;
-  if (D.status === "production") return 3;
-  if (lastBat?.status === "valide") return 3;
-  if (["accepte"].includes(D.status)) return 2;
+  if (D.status === "livre") return 6;
+  if (D.status === "expedie") return 5;
+  if (D.status === "production" || lastBat?.status === "valide") return 3;
+  if (D.status === "accepte") return 2;
   return 1;
 }
 
@@ -84,7 +84,7 @@ function render() {
   if (PRINT) return renderPrint();
   const co = D.company || {};
   const T = D.totals;
-  const accepted = ["accepte", "production", "livre"].includes(D.status);
+  const accepted = ["accepte", "production", "expedie", "livre"].includes(D.status);
   const expired = D.validUntil && Date.now() > D.validUntil + 864e5 && !accepted;
   const canAccept = !accepted && !["refuse", "annule"].includes(D.status) && !expired;
   const lastBat = D.bats[D.bats.length - 1];
@@ -104,6 +104,8 @@ function render() {
     </div>
     <div class="steps">${STEP_DEFS.map(([l, ic], i) => `<div class="step ${i < si ? "done" : i === si ? "cur" : ""}"><span class="n">${i < si ? icon("check", "sm") : i + 1}</span>${l}</div>`).join("")}</div>
     ${callout(canAccept, accepted, expired, lastBat)}
+    ${trackingCard()}
+    <div id="reviewSec"></div>
     <div id="batSec"></div>
     <div class="card"><div class="card-h"><h2>Détail du devis</h2><small class="muted">${T.qty} pièce${T.qty > 1 ? "s" : ""}</small></div>
       <div class="table-wrap"><table class="t lines-t"><thead><tr><th>Article</th><th class="hide-m">Tailles</th><th class="r">Qté</th><th class="r">PU HT</th><th class="r">Total HT</th></tr></thead><tbody>
@@ -125,6 +127,7 @@ function render() {
         ${D.leadTime ? `<div>${icon("clock", "sm")} <b>Délai :</b> ${h(D.leadTime)}</div>` : ""}
         ${T.deposit ? `<div>${icon("card", "sm")} <b>Acompte à la commande :</b> ${fmtEUR(T.deposit)} (${T.depositPct} %)${co.iban ? `<br><small class="muted">Par virement — IBAN : ${h(co.iban)}${co.bic ? ` · BIC : ${h(co.bic)}` : ""}</small>` : ""}</div>` : ""}
         ${D.conditions ? `<small class="muted" style="white-space:pre-wrap;display:block">${h(D.conditions)}</small>` : ""}
+        <a class="btn" href="${h(D.requestUrl)}" target="_blank">${icon("plus", "sm")} Faire une nouvelle demande de devis</a>
       </div></div>
     </div>
     ${canAccept ? `<div class="row" style="justify-content:center;margin-top:22px"><button class="btn ghost" id="decline">Décliner ce devis</button></div>` : ""}
@@ -137,6 +140,38 @@ function render() {
   $("#payDeposit")?.addEventListener("click", payDeposit);
   renderBat();
   renderMessages();
+  renderReview();
+}
+
+/** Suivi de fabrication et d'expédition. */
+function trackingCard() {
+  const p = D.production;
+  if (!p || !["production", "expedie", "livre"].includes(D.status)) return "";
+  const stages = (D.productionStages || []).filter(s => s.key !== "a_lancer");
+  const idx = stages.findIndex(s => s.key === p.stage);
+  return `<div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${icon("brush")} Suivi de votre commande</h2></div><div class="card-b">
+    <div class="steps" style="margin:0 0 12px;border:0;padding:0">${stages.map((s, i) => `<div class="step ${i < idx || p.stage === "livre" ? "done" : i === idx ? "cur" : ""}"><span class="n">${i < idx || p.stage === "livre" ? icon("check", "sm") : i + 1}</span>${h(s.label)}</div>`).join("")}</div>
+    ${p.stage === "expedie" && p.mode === "retrait" ? `<div class="callout t-success" style="border:1px solid;margin:0">${icon("check")}<div class="grow"><b>Votre commande est prête !</b> Elle vous attend à l'atelier${D.company?.address ? ` : ${h(D.company.address)}, ${h(D.company.zip)} ${h(D.company.city)}` : ""}.</div></div>` : ""}
+    ${p.tracking ? `<div class="callout" style="background:var(--surface-2);border:1px solid var(--border);margin:0">${icon("send")}<div class="grow"><b>Expédié${p.shippedAt ? ` le ${fmtDate(p.shippedAt)}` : ""}</b> avec ${h(p.carrier)} — n° de suivi <b>${h(p.tracking)}</b></div>${p.trackingUrl ? `<a class="btn primary" href="${h(p.trackingUrl)}" target="_blank" rel="noopener">Suivre mon colis</a>` : ""}</div>` : ""}
+  </div></div>`;
+}
+
+/** Avis client après livraison. */
+function renderReview() {
+  const sec = $("#reviewSec");
+  if (!sec || D.status !== "livre") return;
+  if (D.review) { sec.innerHTML = `<div class="callout t-success" style="border:1px solid">${icon("sparkle")}<div class="grow"><b>Merci pour votre avis !</b> ${"★".repeat(D.review.rating)}${"☆".repeat(5 - D.review.rating)}</div></div>`; return; }
+  let rating = 0;
+  sec.innerHTML = `<div class="card" style="margin-bottom:18px"><div class="card-h"><h2>Votre commande vous satisfait ?</h2></div><div class="card-b">
+    <div class="stars" id="stars">${[1, 2, 3, 4, 5].map(i => `<button data-r="${i}" aria-label="${i} étoile${i > 1 ? "s" : ""}">★</button>`).join("")}</div>
+    <textarea id="rvc" rows="3" style="margin-top:10px" placeholder="Un commentaire ? (qualité, délais, accueil…)"></textarea>
+    <div class="row end" style="margin-top:10px"><button class="btn primary" id="rvs">Envoyer mon avis</button></div></div></div>`;
+  $$("#stars button").forEach(b => b.onclick = () => { rating = +b.dataset.r; $$("#stars button").forEach(x => x.classList.toggle("on", +x.dataset.r <= rating)); });
+  $("#rvs").onclick = async () => {
+    if (PREVIEW) return toast("Aperçu : action désactivée", "err");
+    if (!rating) return fail("Choisissez une note.");
+    try { D = await call("POST", "/review", { rating, comment: $("#rvc").value }); render(); toast("Merci pour votre avis !"); } catch (e) { fail(e); }
+  };
 }
 
 function callout(canAccept, accepted, expired, lastBat) {
@@ -148,6 +183,7 @@ function callout(canAccept, accepted, expired, lastBat) {
   const depBtn = dep.enabled && !dep.paid && dep.amount > 0 ? `<button class="btn primary" id="payDeposit">${icon("card")} Régler l'acompte (${fmtEUR(dep.amount)})</button>` : "";
   const depOk = dep.paid ? `<span class="badge t-success">Acompte réglé le ${fmtDate(dep.paidAt)}</span>` : "";
   if (lastBat?.status === "en_attente") return `<div class="callout t-warning" style="border:1px solid">${icon("image")}<div class="grow"><b>Votre BAT V${lastBat.version} est prêt !</b><br>Vérifiez-le attentivement puis validez-le pour lancer la production.</div><button class="btn primary lg" id="goBat">Voir le BAT</button></div>`;
+  if (["production", "expedie", "livre"].includes(D.status)) return depBtn ? `<div class="callout card"><div class="grow"><b>Acompte en attente</b></div>${depBtn}</div>` : "";
   if (accepted) return `<div class="callout t-success" style="border:1px solid">${icon("check")}<div class="grow"><b>Devis accepté${D.acceptance ? ` par ${h(D.acceptance.name)} le ${fmtDate(D.acceptance.at)}` : ""}.</b>
     ${lastBat?.status === "valide" ? "BAT validé : votre commande part en production." : lastBat?.status === "modif" ? "Nous préparons une nouvelle version de votre BAT." : "Nous préparons votre BAT, vous serez prévenu dès qu'il sera disponible."}</div>${depOk}${depBtn}</div>`;
   return "";

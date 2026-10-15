@@ -125,15 +125,19 @@ export function crmRoutes(router, ctx) {
     const qs = quotesOf(c, quotes);
     const requests = db.get("requests").filter(r => r.clientId === c.id || (c.email && normEmail(r.contact?.email) === normEmail(c.email)));
     const qIds = new Set(qs.map(q => q.id));
+    const numbers = Object.fromEntries(qs.map(q => [q.id, q.number]));
+    // les évènements de devis viennent de l'historique du devis : on n'en garde pas de doublon côté activités
+    const dup = new Set(["system", "won", "lost", "message_in"]);
     const timeline = [
-      ...db.get("activities").filter(a => a.clientId === c.id || (a.quoteId && qIds.has(a.quoteId) && a.type !== "system")),
+      ...db.get("activities").filter(a => (a.clientId === c.id || (a.quoteId && qIds.has(a.quoteId))) && !(a.quoteId && qIds.has(a.quoteId) && dup.has(a.type)))
+        .map(a => ({ ...a, number: numbers[a.quoteId] })),
       ...qs.flatMap(q => (q.history || []).map(h => ({ ...h, id: "h" + h.id, quoteId: q.id, number: q.number, type: "quote_" + h.type, source: "quote" }))),
       ...requests.map(r => ({ id: "r" + r.id, at: r.createdAt, type: "request", requestId: r.id, text: `Demande ${r.number} reçue (${r.source === "form" ? "formulaire" : r.source})` })),
     ].sort((x, y) => y.at - x.at).slice(0, 400);
     const prospect = db.get("prospects").find(p => p.clientId === c.id || (c.email && normEmail(p.email) === normEmail(c.email)));
     res.json({
       client: c, stats: contactStats(c, quotes), quotes: qs.map(ctx.quoteSummary).sort((a, b) => b.createdAt - a.createdAt),
-      requests: requests.sort((a, b) => b.createdAt - a.createdAt), tasks: db.get("tasks").filter(t => t.clientId === c.id).sort((a, b) => a.due - b.due),
+      requests: requests.sort((a, b) => b.createdAt - a.createdAt), tasks: enrichTasks(db.get("tasks").filter(t => t.clientId === c.id)),
       timeline, prospect: prospect ? { id: prospect.id, status: prospect.status, sequenceId: prospect.sequenceId } : null,
       optedOut: db.get("optout").some(o => o.email === normEmail(c.email)),
     });
@@ -165,16 +169,18 @@ export function crmRoutes(router, ctx) {
   }));
 
   /* ================= TÂCHES ================= */
-  router.get("/tasks", requireAdmin, (_req, res) => {
+  /** Ajoute aux tâches les noms lisibles des éléments liés (contact, devis, demande, prospect). */
+  function enrichTasks(tasks) {
     const clients = db.get("clients"), quotes = db.get("quotes"), requests = db.get("requests"), prospects = db.get("prospects");
-    res.json(db.get("tasks").map(t => ({
+    return tasks.map(t => ({
       ...t,
       clientName: (() => { const c = clients.find(x => x.id === t.clientId); return c ? c.company || c.contact : ""; })(),
       quoteNumber: quotes.find(x => x.id === t.quoteId)?.number || "",
       requestNumber: requests.find(x => x.id === t.requestId)?.number || "",
       prospectName: prospects.find(x => x.id === t.prospectId)?.company || "",
-    })).sort((a, b) => (a.done - b.done) || (a.due - b.due)));
-  });
+    })).sort((a, b) => (a.done - b.done) || (a.due - b.due));
+  }
+  router.get("/tasks", requireAdmin, (_req, res) => res.json(enrichTasks(db.get("tasks"))));
   router.post("/tasks", requireAdmin, wrap((req, res) => {
     const b = req.body || {};
     if (!clean(b.title).trim()) throw new Error("Titre manquant");
@@ -273,8 +279,10 @@ export function crmRoutes(router, ctx) {
       return techniques.find(x => x.id === (totalQty >= 25 ? "serigraphie" : "dtf")) || techniques[0];
     };
     const lines = r.items.map((it, i) => {
-      const a = catalog.find(x => x.id === it.articleId) ||
-        catalog.find(x => it.product && (x.ref?.toLowerCase() === it.product.toLowerCase() || x.name.toLowerCase() === it.product.toLowerCase()));
+      const prod = (it.product || "").toLowerCase();
+      const exact = catalog.find(x => x.id === it.articleId) || catalog.find(x => prod && (x.ref?.toLowerCase() === prod || x.name.toLowerCase() === prod));
+      // sinon : première référence de la catégorie demandée (modèle à confirmer)
+      const a = exact || catalog.find(x => prod && x.category?.toLowerCase() === prod);
       const sizes = parseSizes(it.sizes);
       const sum = Object.values(sizes).reduce((s, n) => s + n, 0);
       let availableSizes = a?.sizes?.length ? [...a.sizes] : ["Unique"];
@@ -288,7 +296,7 @@ export function crmRoutes(router, ctx) {
         id: uid("l"), articleId: a?.id || null, ref: a?.ref || "", name: a?.name || it.product || `Article ${i + 1}`, brand: a?.brand || "",
         image: a?.image || "", cost: a?.cost ?? 0, coef: a?.coef ?? null, salePrice: a?.salePrice ?? null, sizeSurcharges: a?.sizeSurcharges || {},
         availableSizes, colors: a?.colors || (it.color ? [it.color] : []), color: it.color || a?.colors?.[0] || "", sizes,
-        note: [it.notes, !a && it.product ? "Article à confirmer" : ""].filter(Boolean).join(" — "),
+        note: [it.notes, !exact && it.product ? (a ? `Modèle proposé pour « ${it.product} » — à confirmer` : "Article à confirmer") : ""].filter(Boolean).join(" — "),
         perso: it.positions.map(p => ({ id: uid("p"), techniqueId: findTech(p.technique).id, position: p.position, w: p.w ?? "", h: p.h ?? "", formatId: "", colors: p.colors || 1, design: "Logo" })),
       };
     });
