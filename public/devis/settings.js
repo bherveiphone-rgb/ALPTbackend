@@ -193,8 +193,12 @@ function automatisations(body, st) {
 
 /* -------- Formulaire & portail -------- */
 function formulaire(body, st) {
-  const link = `${location.origin}/devis/demande.html`;
-  body.innerHTML = `<div class="grid g2" style="align-items:start">${card("Formulaire de demande de devis", `
+  const link = `${(st.publicUrl || location.origin).trim().replace(/\/$/, "")}/devis/demande.html`;
+  body.innerHTML = `${card("Adresse publique de l'outil", `
+    <p style="margin-top:0">Adresse utilisée dans <b>tous les liens envoyés à vos clients</b> (devis, BAT, formulaire, désinscription). Indispensable si l'outil tourne sur votre ordinateur : collez ici l'adresse donnée par le tunnel (ex. <code>https://devis.mon-atelier.fr</code>).</p>
+    ${f("publicUrl", "Adresse publique", st.publicUrl, "url", 'placeholder="https://devis.mon-atelier.fr"')}
+    ${/^(localhost|127\.)/.test(location.hostname) && !st.publicUrl ? `<div class="warn-list">Sans adresse publique, vos clients ne pourront pas ouvrir les liens reçus (ils pointent vers « localhost », votre ordinateur).</div>` : ""}`)}
+  <div class="grid g2" style="align-items:start;margin-top:16px">${card("Formulaire de demande de devis", `
     <p style="margin-top:0">Vos clients décrivent leur besoin, joignent leur logo et indiquent emplacements et dimensions. Chaque demande crée une fiche contact, une tâche et vous alerte.</p>
     <div class="input-group"><input readonly value="${h(link)}"><a class="btn" href="${h(link)}" target="_blank" style="border-radius:0 8px 8px 0">Ouvrir</a></div>
     <label class="f" style="margin-top:12px"><span>Texte d'introduction du formulaire</span><textarea data-k="formIntro" rows="3" placeholder="Ex. : Devis gratuit sous 24 h — clubs, associations, entreprises.">${h(st.formIntro)}</textarea></label>
