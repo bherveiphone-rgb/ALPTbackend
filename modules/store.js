@@ -14,7 +14,11 @@ export function makeStore(dataDir, seeds, { mergeSettings } = {}) {
   const set = (n, v) => {
     const tmp = file(n) + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(v, null, 2));
-    fs.renameSync(tmp, file(n));
+    try { fs.renameSync(tmp, file(n)); }
+    catch { // Windows : fichier momentanément verrouillé (antivirus, sauvegarde) → écriture directe
+      fs.writeFileSync(file(n), JSON.stringify(v, null, 2));
+      try { fs.unlinkSync(tmp); } catch { /* ignoré */ }
+    }
   };
   /** Lit, modifie via fn (qui peut retourner une valeur), réécrit. */
   const update = (n, fn) => { const v = get(n); const r = fn(v); set(n, v); return r; };

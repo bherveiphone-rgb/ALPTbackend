@@ -351,7 +351,7 @@ let rf = "open";
 export async function renderRequests(main) {
   let list = [], inbox = [];
   try { [list, inbox] = await Promise.all([api("GET", "/requests"), api("GET", "/inbox")]); S.requests = list; } catch (e) { fail(e); }
-  const link = `${location.origin}/devis/demande.html`;
+  const link = `${(S.settings.publicUrl || location.origin).trim().replace(/\/$/, "")}/devis/demande.html`;
   const tabs = [["open", "À traiter"], ["nouvelle", "Nouvelles"], ["devis", "Devis envoyé"], ["gagnee", "Gagnées"], ["perdue", "Perdues"], ["all", "Toutes"], ["inbox", `Emails non rattachés (${inbox.length})`]];
   main.innerHTML = `<div class="page-head"><div class="grow"><h1>Demandes de devis</h1><p>Reçues via votre formulaire en ligne, par email ou saisies après un appel.</p></div>
     <button class="btn" id="cp">${icon("link")} Lien du formulaire</button>
