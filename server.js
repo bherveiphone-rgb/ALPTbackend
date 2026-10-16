@@ -10,10 +10,11 @@ import { createDevisRouter } from "./devis.js";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "data");
+// DATA_DIR / UPLOADS_DIR : à placer sur un disque permanent chez l'hébergeur
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
-const UPLOADS_DIR = path.join(__dirname, "uploads");
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
 
 // La clé SECRÈTE ne doit JAMAIS être exposée au client. On la lit depuis .env
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
@@ -305,6 +306,7 @@ app.post("/confirm-order", (req, res) => {
 });
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/", (_req, res) => res.redirect("/devis/"));
 
 const PORT = process.env.PORT || 4242;
 app.listen(PORT, () => {
