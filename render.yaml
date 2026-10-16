@@ -1,0 +1,29 @@
+# Mise en ligne en un clic sur Render (Blueprint).
+# Le disque permanent conserve devis, contacts, logos… entre les redémarrages.
+services:
+  - type: web
+    name: atelier-devis
+    runtime: node
+    plan: starter
+    region: frankfurt
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    disk:
+      name: donnees
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: DATA_DIR
+        value: /var/data/data
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: TRUST_PROXY
+        value: "1"
+      - key: NODE_VERSION
+        value: "22"
+      - key: STRIPE_SECRET_KEY
+        sync: false

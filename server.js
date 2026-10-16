@@ -5,21 +5,29 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createDevisRouter } from "./devis.js";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "data");
+// DATA_DIR / UPLOADS_DIR : à placer sur un disque permanent chez l'hébergeur
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
-const UPLOADS_DIR = path.join(__dirname, "uploads");
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
 
 // La clé SECRÈTE ne doit JAMAIS être exposée au client. On la lit depuis .env
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
 const app = express();
+// Derrière un hébergeur / proxy (Render, OVH, Nginx…) : TRUST_PROXY=1 pour connaître la vraie IP des visiteurs
+if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use(cors());
+// Outil Devis & BAT : back-office sur /devis/, portail client sur /devis/client.html
+// (monté avant le parseur JSON global : il accepte des fichiers BAT plus lourds)
+app.use("/api/devis", createDevisRouter({ dataDir: DATA_DIR, uploadsDir: UPLOADS_DIR, adminPassword: ADMIN_PASSWORD, stripe }));
+app.use("/devis", express.static(path.join(__dirname, "public", "devis")));
 app.use(express.json({ limit: "8mb" })); // marge pour l'upload d'images en base64
 app.use("/uploads", express.static(UPLOADS_DIR)); // sert les photos produits
 
@@ -298,12 +306,14 @@ app.post("/confirm-order", (req, res) => {
 });
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/", (_req, res) => res.redirect("/devis/"));
 
 const PORT = process.env.PORT || 4242;
 app.listen(PORT, () => {
   console.log(`✅ Backend Élan Club sur http://localhost:${PORT}`);
   console.log(`   Boutique  : http://localhost:3000/index.html`);
   console.log(`   Back office: http://localhost:3000/admin.html`);
+  console.log(`   Devis & BAT: http://localhost:${PORT}/devis/`);
   if (!process.env.STRIPE_SECRET_KEY) {
     console.warn("⚠️  STRIPE_SECRET_KEY manquante — créez un fichier .env (voir .env.example)");
   }
