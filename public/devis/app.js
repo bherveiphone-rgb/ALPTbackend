@@ -175,6 +175,7 @@ async function renderDashboard(main) {
   <div class="page-head"><div class="grow"><h1>Bonjour 👋</h1><p>${new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })} — voici l'activité de votre atelier.</p></div>
     <a class="btn" href="#/simulateur">${icon("calc")} Simuler un prix</a>
     <button class="btn primary" id="nq">${icon("plus")} Nouveau devis</button></div>
+  ${/^(localhost|127\.)/.test(location.hostname) && !S.settings.publicUrl ? `<div class="banner t-danger">${icon("link")}<div class="grow"><b>Outil installé sur cet ordinateur :</b> renseignez l'adresse publique (tunnel) pour que vos clients puissent ouvrir leurs devis, BAT et le formulaire.</div><a class="btn sm" href="#/parametres/formulaire">Régler</a></div>` : ""}
   ${!S.mailEnabled ? `<div class="banner t-warning">${icon("alert")}<div class="grow"><b>Connectez votre boîte mail</b> pour envoyer devis, BAT, relances et campagnes de prospection directement depuis l'outil, et rattacher automatiquement les réponses de vos clients.</div><a class="btn sm" href="#/parametres/emails">Connecter</a></div>` : ""}
   <div class="grid g4 kpis">
     ${kpi("Nouvelles demandes", "msg", "#f97316", newReq.length, newReq.length ? `la plus ancienne ${ago(Math.min(...newReq.map(r => r.createdAt)))}` : "aucune en attente", "#/demandes")}

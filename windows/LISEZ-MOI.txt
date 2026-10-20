@@ -1,0 +1,58 @@
+INSTALLER LE LOGICIEL ATELIER SUR WINDOWS
+==========================================
+
+1. TELECHARGER
+   - Allez sur https://github.com/bherveiphone-rgb/ALPTbackend
+   - Bouton vert "Code" > "Download ZIP"
+   - Clic droit sur le fichier ZIP > "Extraire tout..."
+   - Choisissez un dossier qui ne bougera plus, par exemple C:\Atelier
+     (evitez le Bureau et OneDrive si possible)
+
+2. INSTALLER ET DEMARRER  (double-clic)
+   - Ouvrez le dossier "windows" et double-cliquez sur  Demarrer-Atelier.bat
+   - Si Windows affiche "Windows a protege votre ordinateur" :
+     cliquez sur "Informations complementaires" puis "Executer quand meme".
+   - La premiere fois, Node.js et les composants s'installent tout seuls
+     (si on vous demande de relancer le fichier, faites-le).
+   - Le navigateur s'ouvre sur http://localhost:4242/devis/
+   - Le MOT DE PASSE s'affiche dans la fenetre noire. Notez-le.
+     (il est aussi dans le fichier ".env" du dossier, modifiable avec le Bloc-notes)
+   - Gardez la fenetre noire ouverte (reduite) : la fermer arrete le logiciel.
+
+3. LANCEMENT AUTOMATIQUE (recommande)
+   - Double-cliquez sur  Demarrage-automatique.bat
+   - Le logiciel demarrera a chaque ouverture de Windows.
+   - Desactivez la mise en veille : Parametres Windows > Systeme >
+     Alimentation > Ecran et veille > Mise en veille : "Jamais".
+
+4. PERMETTRE A VOS CLIENTS D'OUVRIR LEURS DEVIS, BAT ET LE FORMULAIRE
+   Sans cela, tout fonctionne pour vous, mais les liens envoyes aux clients
+   pointent vers votre ordinateur et ne s'ouvrent pas chez eux.
+
+   a) Pour ESSAYER (adresse qui change a chaque fois) :
+      - Double-cliquez sur  Connexion-Internet-clients.bat
+      - Copiez l'adresse https://....trycloudflare.com affichee
+      - Dans le logiciel : Parametres > Formulaire et portail > Adresse publique
+
+   b) Pour L'UTILISER AU QUOTIDIEN (adresse fixe, ex. https://devis.mon-atelier.fr) :
+      - Creez un compte gratuit sur https://dash.cloudflare.com
+      - Ajoutez-y votre nom de domaine (ou achetez-en un chez Cloudflare,
+        environ 10 euros/an : Domain Registration > Register Domains)
+      - Double-cliquez sur  Configurer-adresse-fixe.bat  et suivez les questions
+      - Relancez Demarrer-Atelier.bat : le tunnel demarre automatiquement ensuite.
+
+5. SAUVEGARDER (une fois par semaine)
+   - Double-cliquez sur  Sauvegarder.bat
+   - Un fichier ZIP est cree dans Documents\Sauvegardes-Atelier
+   - Copiez-le sur une cle USB, Google Drive ou OneDrive.
+
+6. METTRE A JOUR LE LOGICIEL
+   - Telechargez le nouveau ZIP, extrayez-le, et copiez par-dessus l'ancien
+     dossier SAUF les dossiers "data", "uploads" et le fichier ".env"
+     (ce sont vos donnees et votre mot de passe).
+
+EN CAS DE PROBLEME
+   - "Le port 4242 est deja utilise" : le logiciel tourne deja, ouvrez
+     http://localhost:4242/devis/ dans votre navigateur.
+   - Mot de passe oublie : ouvrez le fichier ".env" avec le Bloc-notes.
+   - Envoyez une capture de la fenetre noire a votre assistant.

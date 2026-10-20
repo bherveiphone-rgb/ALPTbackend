@@ -40,7 +40,7 @@ export function createCore({ db, mail, adminPassword }) {
     req.get("x-admin-password") === adminPassword ? next() : res.status(401).json({ error: "Non autorisé" });
   /** Mémorise l'URL publique vue lors des requêtes (utile aux tâches planifiées). */
   ctx.trackOrigin = (req, _res, next) => { if (!ctx.origin && req.get("host")) ctx.origin = `${req.protocol}://${req.get("host")}`; next(); };
-  ctx.baseUrl = req => (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL)?.replace(/\/$/, "") || (req ? `${req.protocol}://${req.get("host")}` : ctx.origin) || "http://localhost:4242";
+  ctx.baseUrl = req => (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || db.get("settings").publicUrl)?.trim().replace(/\/$/, "") || (req ? `${req.protocol}://${req.get("host")}` : ctx.origin) || "http://localhost:4242";
   ctx.clientLink = (q, req) => `${ctx.baseUrl(req)}/devis/client.html?t=${q.token}`;
   ctx.adminLink = (hash, req) => `${ctx.baseUrl(req)}/devis/#${hash}`;
   ctx.wrap = fn => async (req, res) => {
