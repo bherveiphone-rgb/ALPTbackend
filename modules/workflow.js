@@ -12,7 +12,7 @@ export function workflowRoutes(router, ctx) {
     const quotes = db.get("quotes").filter(q => q.production || (["accepte", "production", "expedie"].includes(q.status)));
     res.json(quotes.map(q => ({
       ...ctx.quoteSummary(q),
-      lines: (q.computed?.lines || []).map(l => ({ name: l.name, color: l.color, qty: l.qty, image: l.image, persos: l.persos.map(p => `${p.techniqueName} ${p.position}`) })),
+      lines: (q.computed?.lines || []).map(l => ({ name: l.name, color: l.color, qty: l.qty, image: l.image, kind: l.kind, persos: l.persos.map(p => `${p.techniqueName} ${p.position}`) })),
       batValidated: (q.bats || []).some(b => b.status === "valide"),
     })));
   });

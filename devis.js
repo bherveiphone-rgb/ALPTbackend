@@ -10,7 +10,7 @@ import { computeQuote, batStatusOf, QUOTE_STATUSES, fmtEUR, r2 } from "./public/
 import { makeStore } from "./modules/store.js";
 import { createMail, MAIL_PRESETS } from "./modules/mail.js";
 import { createCore, uid, token, clean, saveDataUrl, cleanFiles, normEmail } from "./modules/core.js";
-import { SEED_SETTINGS, SEED_TECHNIQUES, SEED_CATALOG, SEED_SEQUENCES, mergeSettings } from "./modules/seeds.js";
+import { SEED_SETTINGS, SEED_TECHNIQUES, SEED_CATALOG, SEED_SEQUENCES, SEED_TECHNIQUES_V2, SEED_OBJECTS, mergeSettings } from "./modules/seeds.js";
 import { crmRoutes } from "./modules/crm.js";
 import { workflowRoutes, startScheduler } from "./modules/workflow.js";
 import { pennylaneRoutes } from "./modules/pennylane.js";
@@ -24,6 +24,12 @@ const SEEDS = {
 export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }) {
   const db = makeStore(dataDir, SEEDS, { mergeSettings });
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  // Migration v2 : ajoute les tarifs d'exemple objets & print sans toucher à vos données
+  if ((db.get("settings").seedVersion || 1) < 2) {
+    db.update("techniques", l => { for (const t of SEED_TECHNIQUES_V2) if (!l.some(x => x.id === t.id)) l.push(structuredClone(t)); });
+    db.update("catalog", l => { for (const a of SEED_OBJECTS) if (!l.some(x => x.id === a.id)) l.push(structuredClone(a)); });
+    db.update("settings", s => { s.seedVersion = 2; });
+  }
   const mail = createMail(db);
   const ctx = createCore({ db, mail, adminPassword });
   ctx.uploadsDir = uploadsDir;
@@ -376,9 +382,9 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
       leadTime: q.leadTime, notes: q.notes, client: q.client || {},
       company: { ...settings.company }, conditions: settings.conditions, batChecklist: settings.batChecklist,
       lines: c.lines.map(l => ({
-        name: l.name, ref: l.ref, brand: l.brand, color: l.color, image: l.image, note: l.note, supplied: l.supplied,
+        name: l.name, ref: l.ref, brand: l.brand, color: l.color, image: l.image, note: l.note, supplied: l.supplied, kind: l.kind,
         qty: l.qty, unit: l.unit, total: l.total, sizes: l.sizeRows.map(r => ({ size: r.size, qty: r.qty })),
-        persos: l.persos.map(x => ({ technique: x.techniqueName, position: x.position, format: x.formatLabel, w: x.w, h: x.h, colors: x.colorsEnabled ? x.colors : null, design: x.design })),
+        persos: l.persos.map(x => ({ technique: x.techniqueName, position: x.position, format: x.formatLabel, w: x.w, h: x.h, colors: x.colorsEnabled ? x.colors : null, design: x.design, options: x.options || [], universe: x.universe })),
       })),
       setups: c.setups.map(s => ({ label: s.label, amount: s.amount })),
       fees: c.fees, totals,

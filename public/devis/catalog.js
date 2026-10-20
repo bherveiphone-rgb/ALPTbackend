@@ -1,6 +1,6 @@
 /* Références (catalogue textile + import CSV), techniques de marquage (grilles), simulateur de prix. */
 import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, uid, num, clone, uploadFile, pickFiles, readAsText, parseCSV, toCSV, parseNum, download, r2 } from "./ui.js";
-import { breakTable } from "./pricing.js";
+import { breakTable, UNIVERSES } from "./pricing.js";
 import { newQuote } from "./app.js";
 import { lineFromArticle, articlePicker } from "./editor.js";
 
@@ -11,12 +11,16 @@ const list = s => String(s || "").split(/[|,;/]/).map(x => x.trim()).filter(Bool
    RÉFÉRENCES
    ================================================================ */
 const sel = new Set();
+let refUni = "textile";
+const uniOf = a => a.universe || "textile";
 export function renderCatalog(main) {
-  const cats = [...new Set(S.catalog.map(a => a.category).filter(Boolean))].sort();
+  const cats = [...new Set(S.catalog.filter(a => uniOf(a) === refUni).map(a => a.category).filter(Boolean))].sort();
   main.innerHTML = `<div class="page-head"><div class="grow"><h1>Références</h1><p>${S.catalog.length} articles · prix de vente = prix d'achat × coefficient (${S.settings.defaultCoef} par défaut)</p></div>
     <button class="btn" id="exp">${icon("download")} Exporter</button>
     <button class="btn" id="imp">${icon("upload")} Importer (CSV / Excel)</button>
     <button class="btn primary" id="add">${icon("plus")} Nouvelle référence</button></div>
+  <div class="seg" id="ru" style="margin-bottom:16px">${[["textile", "Textile"], ["objet", "Objets personnalisés"]].map(([k, l]) => `<button data-u="${k}" class="${refUni === k ? "on" : ""}">${l} (${S.catalog.filter(a => uniOf(a) === k).length})</button>`).join("")}</div>
+  <p class="hint" style="margin-top:-6px">Les produits imprimés (flyers, cartes, affiches…) se règlent dans <a href="#/techniques">Marquages & tarifs › Print</a>.</p>
   <div class="card"><div class="toolbar">
     <div class="search">${icon("search", "sm")}<input type="search" id="rs" placeholder="Référence, nom, marque…"></div>
     <select id="rc" style="width:180px"><option value="">Toutes catégories</option>${cats.map(c => `<option>${h(c)}</option>`).join("")}</select>
@@ -26,7 +30,7 @@ export function renderCatalog(main) {
   </div><div id="rt"></div></div>`;
   const draw = () => {
     const s = $("#rs").value.toLowerCase(), c = $("#rc").value;
-    const items = S.catalog.filter(a => (!c || a.category === c) && (!s || [a.ref, a.name, a.brand, a.category].join(" ").toLowerCase().includes(s)));
+    const items = S.catalog.filter(a => uniOf(a) === refUni && (!c || a.category === c) && (!s || [a.ref, a.name, a.brand, a.category].join(" ").toLowerCase().includes(s)));
     $("#rt").innerHTML = items.length ? `<div class="table-wrap"><table class="t"><thead><tr>
       <th style="width:36px"><input type="checkbox" id="all"></th><th></th><th>Référence</th><th>Catégorie</th><th>Coloris</th><th>Tailles</th>
       <th class="r">Achat HT</th><th class="r">Coef</th><th class="r">Vente HT</th></tr></thead><tbody>
@@ -69,6 +73,7 @@ export function renderCatalog(main) {
   };
   $("#rs").oninput = draw; $("#rc").onchange = draw;
   $("#add").onclick = () => articleModal(null, () => renderCatalog(main));
+  $$("#ru button").forEach(b => b.onclick = () => { refUni = b.dataset.u; sel.clear(); renderCatalog(main); });
   $("#imp").onclick = () => importModal(() => renderCatalog(main));
   $("#exp").onclick = () => download(`references-${new Date().toISOString().slice(0, 10)}.csv`, toCSV([
     ["reference", "nom", "marque", "categorie", "prix_achat", "coef", "prix_vente", "couleurs", "tailles", "surcharges_tailles", "image"],
@@ -80,7 +85,7 @@ export function renderCatalog(main) {
 
 function articleModal(a, onSaved) {
   const isNew = !a;
-  a = a ? clone(a) : { ref: "", name: "", brand: "", category: "", cost: 0, coef: null, salePrice: null, colors: [], sizes: ["S", "M", "L", "XL"], sizeSurcharges: {}, image: "", notes: "" };
+  a = a ? clone(a) : { ref: "", name: "", brand: "", category: "", cost: 0, coef: null, salePrice: null, colors: [], sizes: refUni === "objet" ? ["Unique"] : ["S", "M", "L", "XL"], sizeSurcharges: {}, image: "", notes: "", universe: refUni };
   const m = modal({
     title: isNew ? "Nouvelle référence" : a.name, size: "wide",
     body: `<div class="row" style="align-items:flex-start;gap:18px;flex-wrap:nowrap">
@@ -90,6 +95,7 @@ function articleModal(a, onSaved) {
         <label class="f"><span>Référence fournisseur</span><input type="text" data-k="ref" value="${h(a.ref)}"></label>
         <label class="f"><span>Marque</span><input type="text" data-k="brand" value="${h(a.brand)}"></label>
         <label class="f" style="grid-column:span 2"><span>Désignation</span><input type="text" data-k="name" value="${h(a.name)}"></label>
+        <label class="f"><span>Univers</span><select data-k="universe"><option value="textile" ${uniOf(a) === "textile" ? "selected" : ""}>Textile</option><option value="objet" ${uniOf(a) === "objet" ? "selected" : ""}>Objet personnalisé</option></select></label>
         <label class="f"><span>Catégorie</span><input type="text" data-k="category" value="${h(a.category)}" list="cats"><datalist id="cats">${[...new Set(S.catalog.map(x => x.category).filter(Boolean))].map(c => `<option value="${h(c)}">`).join("")}</datalist></label>
         <label class="f"><span>Prix d'achat HT</span><div class="input-group"><input type="number" step="0.01" data-k="cost" value="${h(a.cost)}"><span class="addon">€</span></div></label>
         <label class="f"><span>Coefficient</span><div class="input-group"><input type="number" step="0.05" data-k="coef" value="${h(a.coef ?? "")}" placeholder="${h(S.settings.defaultCoef)} (défaut)"><span class="addon">×</span></div></label>
@@ -161,6 +167,7 @@ const FIELDS = [
   ["sizes", "Tailles", ["tailles", "taille", "sizes", "size"]],
   ["sizeSurcharges", "Surcoûts tailles (2XL:0.5|3XL:1)", ["surcharges_tailles", "surcout", "surcoût", "surcharges"]],
   ["image", "URL image", ["image", "photo", "url", "visuel"]],
+  ["universe", "Univers (textile / objet)", ["univers", "universe", "gamme"]],
 ];
 const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 
@@ -182,6 +189,7 @@ function importModal(onDone) {
         return {
           ref: v("ref"), name: v("name") || v("ref"), brand: v("brand"), category: v("category"), cost: parseNum(v("cost")) ?? 0,
           coef: parseNum(v("coef")), salePrice: parseNum(v("salePrice")), colors: list(v("colors")), sizes: list(v("sizes")).length ? list(v("sizes")) : ["Unique"],
+          universe: /obj|goodie/i.test(v("universe")) ? "objet" : v("universe") ? "textile" : refUni,
           sizeSurcharges: sur, image: v("image"), notes: "",
         };
       }).filter(x => x.name);
@@ -239,16 +247,21 @@ function importModal(onDone) {
 /* ================================================================
    TECHNIQUES DE MARQUAGE
    ================================================================ */
+let techUni = "textile";
 export function renderTechniques(main) {
-  main.innerHTML = `<div class="page-head"><div class="grow"><h1>Marquages & tarifs</h1><p>Vos techniques de personnalisation, leurs formats et leurs grilles de prix dégressifs.</p></div>
-    <button class="btn primary" id="add">${icon("plus")} Nouvelle technique</button></div>
-    <div class="grid g2">${S.techniques.map(t => `<div class="card tech-card" data-t="${t.id}">
+  const list = S.techniques.filter(t => (t.universe || "textile") === techUni);
+  main.innerHTML = `<div class="page-head"><div class="grow"><h1>Marquages & tarifs</h1><p>Techniques de personnalisation (textile, objets) et produits imprimés, avec leurs formats, options et grilles dégressives.</p></div>
+    <button class="btn primary" id="add">${icon("plus")} ${techUni === "print" ? "Nouveau produit imprimé" : "Nouvelle technique"}</button></div>
+    <div class="seg" id="tu" style="margin-bottom:16px">${Object.entries(UNIVERSES).map(([k, l]) => `<button data-u="${k}" class="${techUni === k ? "on" : ""}">${l} (${S.techniques.filter(t => (t.universe || "textile") === k).length})</button>`).join("")}</div>
+    <div class="grid g2">${list.map(t => `<div class="card tech-card" data-t="${t.id}">
       <div class="ic" style="background:${h(t.color)}">${icon("brush")}</div>
       <div style="flex:1;min-width:0"><div class="row between"><h3>${h(t.name)}</h3>${t.colorsEnabled ? badge("Prix selon nb de couleurs", "info", true) : ""}</div>
         <p class="muted" style="margin:4px 0 8px">${h(t.description || "")}</p>
         <div class="row" style="gap:6px">${(t.formats || []).map(f => `<span class="chip">${h(f.label)}</span>`).join("")}</div>
-        <small class="muted" style="display:block;margin-top:8px">Paliers : ${(t.breaks || []).join(" · ")} pcs${t.setupFee || t.setupPerColor ? ` · ${h(t.setupLabel || "Frais")} : ${t.setupFee ? fmtEUR(t.setupFee) : ""}${t.setupPerColor ? ` ${fmtEUR(t.setupPerColor)}/couleur` : ""}` : " · sans frais fixes"}${t.minQty > 1 ? ` · min. ${t.minQty} pcs` : ""}</small>
-      </div></div>`).join("")}</div>`;
+        ${(t.options || []).length ? `<div class="row" style="gap:6px;margin-top:6px">${t.options.map(o => `<span class="chip gray">${h(o.label)}</span>`).join("")}</div>` : ""}
+        <small class="muted" style="display:block;margin-top:8px">Paliers : ${(t.breaks || []).join(" · ")} ${t.universe === "print" ? "ex." : "pcs"}${t.setupFee || t.setupPerColor ? ` · ${h(t.setupLabel || "Frais")} : ${t.setupFee ? fmtEUR(t.setupFee) : ""}${t.setupPerColor ? ` ${fmtEUR(t.setupPerColor)}/couleur` : ""}` : " · sans frais fixes"}${t.minQty > 1 ? ` · min. ${t.minQty} pcs` : ""}</small>
+      </div></div>`).join("") || `<div class="card empty">Rien pour l'instant.</div>`}</div>`;
+  $$("#tu button").forEach(b => b.onclick = () => { techUni = b.dataset.u; renderTechniques(main); });
   $$("[data-t]").forEach(c => c.onclick = () => techniqueEditor(S.techniques.find(t => t.id === c.dataset.t), () => renderTechniques(main)));
   $("#add").onclick = () => techniqueEditor(null, () => renderTechniques(main));
 }
@@ -258,13 +271,14 @@ function techniqueEditor(t, onSaved) {
   t = t ? clone(t) : {
     name: "", color: "#0891b2", colorsEnabled: false, maxColors: 6, minQty: 1, setupFee: 0, setupPerColor: 0, setupLabel: "Frais techniques", costPct: 40, description: "",
     formats: [{ id: uid("fmt"), label: "Petit (≤ 10×10 cm)", w: 10, h: 10 }, { id: uid("fmt"), label: "Grand (≤ 30×40 cm)", w: 30, h: 40 }],
-    breaks: [1, 10, 25, 50, 100], prices: {}, extraColorPrices: [],
+    breaks: [1, 10, 25, 50, 100], prices: {}, extraColorPrices: [], universe: techUni, options: [],
   };
-  t.prices ||= {}; t.extraColorPrices ||= [];
+  t.prices ||= {}; t.extraColorPrices ||= []; t.options ||= []; t.universe ||= "textile";
   const m = modal({
     title: isNew ? "Nouvelle technique" : t.name, size: "xwide",
     body: `<div class="grid g4">
       <label class="f" style="grid-column:span 2"><span>Nom</span><input type="text" id="tName" value="${h(t.name)}" placeholder="Ex. : Sublimation, Gravure laser…"></label>
+      <label class="f"><span>Univers</span><select id="tUni">${Object.entries(UNIVERSES).map(([k, l]) => `<option value="${k}" ${t.universe === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="f"><span>Couleur repère</span><input type="color" id="tColor" value="${h(t.color)}" style="height:36px;padding:3px"></label>
       <label class="f"><span>Quantité minimum conseillée</span><input type="number" id="tMin" value="${h(t.minQty)}"></label>
       <label class="f" style="grid-column:span 4"><span>Description (pour vous)</span><input type="text" id="tDesc" value="${h(t.description)}"></label>
@@ -279,7 +293,10 @@ function techniqueEditor(t, onSaved) {
     <div class="row between" style="margin:20px 0 8px"><h3>Grille de prix unitaires HT (par pièce)</h3>
       <div class="row"><button class="btn sm" id="addBreak">${icon("plus", "sm")} Palier</button><button class="btn sm" id="addFmt">${icon("plus", "sm")} Format</button><button class="btn sm" id="pct">± % sur la grille</button></div></div>
     <p class="hint" style="margin-top:0">Lignes = formats (avec dimensions max. pour la détection automatique). Colonnes = paliers de quantité (« à partir de »).</p>
-    <div class="table-wrap" id="grid"></div>`,
+    <div class="table-wrap" id="grid"></div>
+    <div class="row between" style="margin:20px 0 8px"><h3>Options</h3><button class="btn sm" id="addOpt">${icon("plus", "sm")} Option</button></div>
+    <p class="hint" style="margin-top:0">Papier, recto-verso, finition, création graphique… Les options d'un même <b>groupe</b> s'excluent (le client en choisit une). Effet : <b>%</b> du prix unitaire, <b>€/unité</b> ajouté à chaque pièce, ou <b>€ fixe</b> une fois par visuel.</p>
+    <div id="opts"></div>`,
     actions: [
       ...(isNew ? [] : [{ label: "Supprimer", cls: "danger", icon: "trash", onClick: async () => {
         if (!(await confirmBox("Supprimer cette technique ?", "Les devis existants gardent leur grille figée."))) return false;
@@ -310,7 +327,21 @@ function techniqueEditor(t, onSaved) {
     t.description = $("#tDesc", m.el).value; t.setupLabel = $("#tSetupLbl", m.el).value; t.setupFee = num($("#tSetup", m.el).value) ?? 0;
     t.costPct = num($("#tCost", m.el).value) ?? 40; t.colorsEnabled = $("#tColors", m.el).checked;
     t.setupPerColor = num($("#tSetupColor", m.el).value) ?? 0; t.maxColors = num($("#tMaxC", m.el).value) ?? 0;
+    t.universe = $("#tUni", m.el).value;
+    t.options = t.options.filter(o => o.label.trim());
   };
+  const drawOpts = () => {
+    $("#opts", m.el).innerHTML = t.options.map((o, i) => `<div class="row" style="margin-bottom:6px;flex-wrap:nowrap">
+      <input class="sm" data-o="${i}" data-f="label" value="${h(o.label)}" placeholder="Libellé (ex. Papier 170 g)">
+      <input class="sm" style="width:140px;flex:none" data-o="${i}" data-f="group" value="${h(o.group || "")}" placeholder="Groupe (ex. Papier)">
+      <select class="sm" style="width:120px;flex:none" data-o="${i}" data-f="type"><option value="pct" ${o.type === "pct" ? "selected" : ""}>+ %</option><option value="unit" ${o.type === "unit" ? "selected" : ""}>+ €/unité</option><option value="fixed" ${o.type === "fixed" ? "selected" : ""}>+ € fixe</option></select>
+      <input type="number" class="sm" style="width:90px;flex:none" step="0.01" data-o="${i}" data-f="value" value="${h(o.value)}">
+      <button class="btn sm ghost icon" data-ord="${i}">${icon("trash", "sm")}</button></div>`).join("") || `<small class="muted">Aucune option.</small>`;
+    $$("[data-o]", m.el).forEach(el => el.oninput = el.onchange = () => { const o = t.options[el.dataset.o]; o[el.dataset.f] = el.dataset.f === "value" ? num(el.value) ?? 0 : el.value; });
+    $$("[data-ord]", m.el).forEach(b => b.onclick = () => { t.options.splice(+b.dataset.ord, 1); drawOpts(); });
+  };
+  $("#addOpt", m.el).onclick = () => { t.options.push({ id: uid("o"), label: "", group: "", type: "pct", value: 0 }); drawOpts(); };
+  drawOpts();
   const toggleColors = () => $$(".colors-only", m.el).forEach(e => e.style.opacity = $("#tColors", m.el).checked ? 1 : .4);
   $("#tColors", m.el).onchange = () => { toggleColors(); readHead(); drawGrid(); };
   toggleColors();
