@@ -15,10 +15,13 @@ import { crmRoutes } from "./modules/crm.js";
 import { workflowRoutes, startScheduler } from "./modules/workflow.js";
 import { pennylaneRoutes } from "./modules/pennylane.js";
 import { prospectionRoutes } from "./modules/prospection.js";
+import { qontoRoutes } from "./modules/qonto.js";
+import { purchasingRoutes } from "./modules/purchasing.js";
 
 const SEEDS = {
   settings: SEED_SETTINGS, techniques: SEED_TECHNIQUES, catalog: SEED_CATALOG, clients: [], quotes: [],
   activities: [], tasks: [], requests: [], prospects: [], sequences: SEED_SEQUENCES, optout: [], mailstate: {}, inbox: [], autolog: [], prospstate: {},
+  quoteTemplates: [], bankmatches: [], bankstate: {}, stock: [], stockmoves: [], shops: [], shopOrders: [], users: [], sessions: [],
 };
 
 export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }) {
@@ -90,13 +93,14 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     ...s,
     mail: { ...s.mail, smtp: { ...s.mail.smtp, pass: "" }, imap: { ...s.mail.imap, pass: "" }, hasSmtpPass: !!s.mail.smtp?.pass, hasImapPass: !!s.mail.imap?.pass },
     pennylane: { ...s.pennylane, apiKey: "", hasKey: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY) },
+    qonto: { ...s.qonto, secretKey: "", hasKey: !!(s.qonto.secretKey || process.env.QONTO_SECRET_KEY) },
   });
   router.get("/bootstrap", requireAdmin, (_req, res) => {
     const s = db.get("settings");
     res.json({
       settings: publicSettings(s), techniques: db.get("techniques"), catalog: db.get("catalog"), clients: db.get("clients"),
       mailEnabled: mail.configured(), imapEnabled: mail.imapConfigured(), mailPresets: MAIL_PRESETS, mailState: db.get("mailstate"),
-      stripeEnabled: !!process.env.STRIPE_SECRET_KEY, pennylaneEnabled: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY),
+      stripeEnabled: !!process.env.STRIPE_SECRET_KEY, qontoEnabled: !!(s.qonto.login || process.env.QONTO_LOGIN) && !!(s.qonto.secretKey || process.env.QONTO_SECRET_KEY), pennylaneEnabled: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY),
     });
   });
 
@@ -113,6 +117,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
       };
       delete next.mail.hasSmtpPass; delete next.mail.hasImapPass;
     }
+    if (b.qonto) { next.qonto = { ...cur.qonto, ...b.qonto, secretKey: b.qonto.secretKey || cur.qonto.secretKey || "" }; delete next.qonto.hasKey; }
     if (b.pennylane) { next.pennylane = { ...cur.pennylane, ...b.pennylane, apiKey: b.pennylane.apiKey || cur.pennylane.apiKey || "" }; delete next.pennylane.hasKey; }
     db.set("settings", next);
     res.json(publicSettings(mergeSettings(next)));
@@ -581,6 +586,8 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   workflowRoutes(router, ctx);
   pennylaneRoutes(router, ctx);
   prospectionRoutes(router, ctx);
+  qontoRoutes(router, ctx);
+  purchasingRoutes(router, ctx);
   startScheduler(ctx);
 
   return router;

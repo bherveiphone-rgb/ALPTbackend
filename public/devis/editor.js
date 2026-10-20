@@ -4,6 +4,7 @@ import { computeQuote, lineQty, resolveFormat, QUOTE_STATUSES, BAT_STATUSES, bat
 import { reloadQuotes, clientModal, clientSnapshot, CLIENT_FIELDS, statusBadge, batBadge, newQuote } from "./app.js";
 import { emailComposer, taskModal, activityModal } from "./contacts.js";
 import { render as renderTpl } from "./tpl.js";
+import { saveAsTemplate } from "./achats.js";
 
 /** Variables des modèles d'emails pour ce devis (mêmes noms que côté serveur). */
 function tplVars(q, extra = {}) {
@@ -556,11 +557,13 @@ function drawSummary(c) {
     ${q.production || q.payment?.status ? `<div class="row" style="margin-top:12px;gap:6px">${q.production ? `<a class="chip" href="#/production">${icon("brush", "sm")} ${h(S.settings.productionStages.find(s => s.key === q.production.stage)?.label || "")}</a><a class="chip" href="#/fiche/${q.id}">${icon("print", "sm")} Fiche de fabrication</a>` : ""}${q.payment?.status ? `<a class="chip ${q.payment.status === "paye" ? "green" : ""}" href="#/facturation">${icon("euro", "sm")} ${{ non_paye: "Non payé", acompte: "Acompte reçu", paye: "Payé" }[q.payment.status]}</a>` : ""}</div>` : ""}
     <div class="row" style="margin-top:14px">
       <button class="btn sm" id="dupQ">${icon("copy", "sm")} Dupliquer</button>
+      <button class="btn sm" id="tplQ" title="Réutiliser ce devis pour d'autres clients">${icon("save", "sm")} Modèle</button>
       <button class="btn sm" id="refreshQ" title="Réappliquer vos grilles tarifaires actuelles">${icon("refresh", "sm")} Actualiser tarifs</button>
       <button class="btn sm danger" id="delQ">${icon("trash", "sm")}</button>
     </div>
   </div>`;
   $("#status").onchange = e => { q.status = e.target.value; setDirty(); $("#hdrStatus").innerHTML = `${statusBadge(q.status)} ${batBadge(batStatusOf(q))}`; };
+  $("#tplQ").onclick = async () => { if (E.dirty && !(await save(true))) return; saveAsTemplate(E.q); };
   $("#dupQ").onclick = async () => {
     if (E.dirty && !(await save(true))) return;
     try { const r = await api("POST", `/quotes/${q.id}/duplicate`); toast("Devis dupliqué"); location.hash = `#/devis/${r.id}`; } catch (e) { fail(e); }

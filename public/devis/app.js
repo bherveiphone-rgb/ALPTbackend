@@ -7,6 +7,7 @@ import { renderContacts, renderContact, renderRequests, renderRequest, renderTas
 import { renderProduction, renderBilling, renderSheet } from "./operations.js";
 import { renderProspection } from "./prospection.js";
 import { renderSettings } from "./settings.js";
+import { renderPurchasing, templatePicker } from "./achats.js";
 
 const root = $("#root");
 
@@ -60,6 +61,7 @@ const NAV = [
   ["#/prospection", "trend", "Prospection"],
   "Atelier",
   ["#/production", "brush", "Production"],
+  ["#/achats", "shirt", "Achats"],
   ["#/facturation", "euro", "Facturation"],
   ["#/simulateur", "calc", "Simulateur de prix"],
   "Réglages",
@@ -116,7 +118,7 @@ export function route() {
     "": renderDashboard, devis: id ? () => renderEditor(main, id) : renderQuotes,
     contacts: id ? () => renderContact(main, id) : renderContacts, clients: renderContacts,
     demandes: id ? () => renderRequest(main, id) : renderRequests, taches: renderTasks, pipeline: renderPipeline,
-    production: renderProduction, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
+    production: renderProduction, achats: renderPurchasing, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
     references: renderCatalog, techniques: renderTechniques, simulateur: renderSimulator, parametres: renderSettings,
   };
   (views[page] || renderDashboard)(main);
@@ -231,6 +233,7 @@ async function renderQuotes(main) {
   const tabs = [["all", "Tous"], ["action", "À traiter"], ["brouillon", "Brouillons"], ["envoye", "Envoyés"], ["accepte", "Acceptés"], ["production", "Production"], ["expedie", "Expédiés"], ["livre", "Livrés"], ["refuse", "Refusés"]];
   main.innerHTML = `<div class="page-head"><div class="grow"><h1>Devis</h1><p>${S.quotes.length} devis au total</p></div>
     <button class="btn" id="exp">${icon("download")} Export CSV</button>
+    <button class="btn" id="fromTpl">${icon("copy")} Depuis un modèle</button>
     <button class="btn primary" id="nq">${icon("plus")} Nouveau devis</button></div>
     <div class="card"><div class="toolbar">
       <div class="search">${icon("search", "sm")}<input type="search" id="qs" placeholder="Rechercher n°, client, objet…" value="${h(quoteFilter.q)}"></div>
@@ -247,6 +250,7 @@ async function renderQuotes(main) {
     bindQuoteRows($("#qt"));
   };
   $("#qs").oninput = e => { quoteFilter.q = e.target.value; draw(); };
+  $("#fromTpl").onclick = () => templatePicker(preset => newQuote(preset));
   $$("#seg button").forEach(b => b.onclick = () => { quoteFilter.status = b.dataset.s; $$("#seg button").forEach(x => x.classList.toggle("on", x === b)); draw(); });
   $("#nq").onclick = () => newQuote();
   $("#exp").onclick = () => download(`devis-${new Date().toISOString().slice(0, 10)}.csv`, toCSV([

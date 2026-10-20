@@ -132,7 +132,7 @@ function render() {
       <div class="card"><div class="card-h"><h2>Informations</h2></div><div class="card-b stack">
         ${D.notes ? `<div style="white-space:pre-wrap">${h(D.notes)}</div>` : ""}
         ${D.leadTime ? `<div>${icon("clock", "sm")} <b>Délai :</b> ${h(D.leadTime)}</div>` : ""}
-        ${T.deposit ? `<div>${icon("card", "sm")} <b>Acompte à la commande :</b> ${fmtEUR(T.deposit)} (${T.depositPct} %)${co.iban ? `<br><small class="muted">Par virement — IBAN : ${h(co.iban)}${co.bic ? ` · BIC : ${h(co.bic)}` : ""}</small>` : ""}</div>` : ""}
+        ${T.deposit ? `<div>${icon("card", "sm")} <b>Acompte à la commande :</b> ${fmtEUR(T.deposit)} (${T.depositPct} %)${co.iban ? `<br><small class="muted">Par virement — IBAN : ${h(co.iban)}${co.bic ? ` · BIC : ${h(co.bic)}` : ""}<br>Référence à indiquer sur votre virement : <b>${h(D.number)}</b></small>` : ""}</div>` : ""}
         ${D.conditions ? `<small class="muted" style="white-space:pre-wrap;display:block">${h(D.conditions)}</small>` : ""}
         <a class="btn" href="${h(D.requestUrl)}" target="_blank">${icon("plus", "sm")} Faire une nouvelle demande de devis</a>
       </div></div>
@@ -325,7 +325,7 @@ function renderPrint() {
     <div class="tot">${totalsHtml(T)}${T.deposit ? `<div class="sum-row" style="color:var(--muted)"><span>Acompte ${T.depositPct} %</span><span class="num">${fmtEUR(T.deposit)}</span></div>` : ""}</div>
     <div class="grid g2" style="margin-top:24px;align-items:start">
       <div>${D.leadTime ? `<b>Délai :</b> ${h(D.leadTime)}<br>` : ""}${D.notes ? `<div style="white-space:pre-wrap;margin-top:6px">${h(D.notes)}</div>` : ""}
-        ${co.iban ? `<div style="margin-top:8px"><b>Règlement par virement</b><br>IBAN : ${h(co.iban)}${co.bic ? `<br>BIC : ${h(co.bic)}` : ""}</div>` : ""}</div>
+        ${co.iban ? `<div style="margin-top:8px"><b>Règlement par virement</b><br>IBAN : ${h(co.iban)}${co.bic ? `<br>BIC : ${h(co.bic)}` : ""}<br>Référence à indiquer : <b>${h(D.number)}</b></div>` : ""}</div>
       <div class="box" style="min-height:110px"><small class="muted">Bon pour accord — date et signature</small>
         ${D.acceptance ? `<div style="margin-top:6px">Signé par <b>${h(D.acceptance.name)}</b> le ${fmtDate(D.acceptance.at, true)}</div><img src="${h(D.acceptance.signature)}" style="max-height:70px;max-width:100%">` : ""}</div>
     </div>

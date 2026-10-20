@@ -3,7 +3,7 @@ import { S, api, h, $, $$, icon, badge, toast, fail, confirmBox, num, uid, uploa
 import { reloadBootstrap } from "./app.js";
 
 const TABS = [["entreprise", "users", "Entreprise"], ["calcul", "calc", "Devis & calcul"], ["emails", "send", "Boîte mail"], ["modeles", "msg", "Modèles d'emails"],
-  ["automatisations", "sparkle", "Automatisations"], ["formulaire", "link", "Formulaire & portail"], ["prospection", "trend", "Prospection"], ["integrations", "euro", "Pennylane"], ["sauvegarde", "download", "Sauvegarde"]];
+  ["automatisations", "sparkle", "Automatisations"], ["formulaire", "link", "Formulaire & portail"], ["prospection", "trend", "Prospection"], ["integrations", "euro", "Pennylane & Qonto"], ["sauvegarde", "download", "Sauvegarde"]];
 
 export function renderSettings(main) {
   const tab = location.hash.split("/")[2] || "entreprise";
@@ -230,7 +230,17 @@ function integrations(body, st, save) {
     <div style="margin-top:10px">${chk("pennylane.draft", "Créer les factures en <b>brouillon</b> (recommandé : vous les vérifiez puis les finalisez dans Pennylane)", pl.draft !== false)}</div>
     <div class="row" style="margin-top:12px"><button class="btn" id="plTest">${icon("refresh", "sm")} Enregistrer et tester</button><span id="plRes"></span></div>`)}
     ${card("Obtenir la clé", `<ol style="margin:0;padding-left:18px;line-height:1.7"><li>Dans Pennylane : <b>Paramètres › Connectivité › Développeurs</b>.</li><li>Créez un jeton d'API (API v2) avec les droits <b>Factures clients</b> et <b>Clients</b> en lecture/écriture.</li><li>Collez-le ici et testez.</li></ol>
-      <p class="hint">Le jeton est stocké sur votre serveur et n'est jamais renvoyé au navigateur. Vous pouvez aussi le définir via PENNYLANE_API_KEY dans le fichier .env.</p>`)}</div>`;
+      <p class="hint">Le jeton est stocké sur votre serveur et n'est jamais renvoyé au navigateur. Vous pouvez aussi le définir via PENNYLANE_API_KEY dans le fichier .env.</p>`)}
+    ${card("Qonto (banque)", `
+      <p style="margin-top:0">Les <b>virements reçus</b> sont relevés toutes les 15 minutes et rapprochés de vos devis : par la référence (ex. DEV-2026-0012, indiquée au client sur son devis), sinon par le montant et le nom. Connexion en <b>lecture seule</b> : aucun paiement ne peut être émis.</p>
+      <div class="grid g2">${f("qonto.login", "Identifiant", st.qonto?.login, "text", 'placeholder="mon-atelier-1234" autocomplete="off"')}
+      <label class="f"><span>Clé secrète ${st.qonto?.hasKey ? badge("enregistrée", "success", true) : ""}</span><input type="password" data-k="qonto.secretKey" value="" placeholder="${st.qonto?.hasKey ? "•••••••• (inchangée)" : "Clé secrète"}" autocomplete="new-password"></label></div>
+      <div class="row" style="margin-top:12px"><button class="btn" id="qtTest">${icon("refresh", "sm")} Enregistrer et tester</button><span id="qtRes"></span></div>`)}
+    ${card("Obtenir la clé Qonto", `<ol style="margin:0;padding-left:18px;line-height:1.7"><li>Dans l'application Qonto (titulaire ou admin) : <b>Paramètres › Intégrations et partenariats › Clé API</b>.</li><li>Copiez l'<b>identifiant</b> et la <b>clé secrète</b>.</li><li>Collez-les ici et testez.</li></ol>`)}</div>`;
+  $("#qtTest").onclick = async () => {
+    try { await save(false); const r = await api("POST", "/qonto/test"); $("#qtRes").innerHTML = `✅ ${h(r.name)} — ${r.accounts.length} compte(s)`; }
+    catch (e) { $("#qtRes").innerHTML = `<span style="color:var(--danger)">❌ ${h(e.message)}</span>`; }
+  };
   $("#plTest").onclick = async () => {
     try { await save(false); const r = await api("POST", "/pennylane/test"); $("#plRes").innerHTML = `✅ Connecté${r.company ? ` à ${h(r.company)}` : ""}`; }
     catch (e) { $("#plRes").innerHTML = `<span style="color:var(--danger)">❌ ${h(e.message)}</span>`; }

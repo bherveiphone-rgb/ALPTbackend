@@ -239,6 +239,7 @@ export function startScheduler(ctx) {
       if (n % 10 === 1) await runAutomations(ctx);
       if (n % 3 === 1 && ctx.mail.imapConfigured()) await ctx.mail.poll(m => handleInbound(ctx, m));
       if (n % 30 === 5 && ctx.pennylaneSync) await ctx.pennylaneSync();
+      if (n % 15 === 7 && ctx.qontoEnabled?.()) await ctx.qontoSync().catch(e => ctx.db.set("bankstate", { ...ctx.db.get("bankstate"), lastError: e.message, lastSync: Date.now() }));
       if (ctx.prospectionTick) await ctx.prospectionTick();
     } catch (e) { console.error("Planificateur :", e.message); }
     busy = false;

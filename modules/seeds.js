@@ -167,6 +167,15 @@ export function mergeSettings(v) {
   s.productionStages = PRODUCTION_STAGES.map(st => ({ ...st, label: v.productionStages?.find(x => x.key === st.key)?.label || st.label }));
   s.mail = { smtp: {}, imap: {}, ...(v.mail || {}) };
   s.pennylane = { apiKey: "", draft: true, ...(v.pennylane || {}) };
+  s.qonto = { login: "", secretKey: "", ...(v.qonto || {}) };
+  s.suppliers = Array.isArray(v.suppliers) ? v.suppliers : [];
+  s.machines = Array.isArray(v.machines) ? v.machines : [
+    { id: "carrousel", name: "Carrousel sérigraphie", capacity: 400, techniques: ["serigraphie"] },
+    { id: "brodeuse", name: "Brodeuse", capacity: 80, techniques: ["broderie"] },
+    { id: "presse", name: "Presse à chaud (DTF / flex)", capacity: 150, techniques: ["dtf", "flocage", "sublim"] },
+    { id: "objets", name: "Poste objets (tampo / laser / UV)", capacity: 300, techniques: ["tampo", "laser", "uv"] },
+  ];
+  s.backup = { dir: "", keep: 30, ...(v.backup || {}) };
   s.tags = Array.isArray(v.tags) ? v.tags : ["Club", "Association", "Entreprise", "École", "Collectivité", "Événement", "VIP"];
   s.lostReasons = Array.isArray(v.lostReasons) ? v.lostReasons : ["Prix trop élevé", "Délai trop long", "Concurrent", "Projet abandonné", "Pas de réponse"];
   return s;
