@@ -17,6 +17,9 @@ function tplVars(q, extra = {}) {
 }
 
 const DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "2XL", "3XL"];
+/** Univers d'une ligne : textile, objet ou print (imprimés). */
+const lineUni = l => (l.kind === "print" ? "print" : l.universe || "textile");
+const techsOf = (u, current) => E.techniques.filter(t => (t.universe || "textile") === u || t.id === current);
 const E = { q: null, techniques: [], dirty: false, tab: "devis", c: null, setupKeys: "", staged: [] };
 
 /* -------- Garde-fou : modifications non enregistrées -------- */
@@ -128,6 +131,8 @@ function drawQuoteTab(body) {
       <div id="lines"></div>
       <div class="add-bar">
         <button class="btn primary" id="addArticle">${icon("shirt")} Ajouter une référence</button>
+        <button class="btn" id="addObject">${icon("sparkle")} Objet personnalisé</button>
+        <button class="btn" id="addPrint">${icon("print")} Imprimé (print)</button>
         <button class="btn" id="addFree">${icon("plus")} Article libre</button>
         <button class="btn" id="addSupplied">${icon("brush")} Marquage seul (textile fourni)</button>
       </div>
@@ -170,6 +175,11 @@ function drawQuoteTab(body) {
   drawClientLink();
 
   $("#addArticle").onclick = () => articlePicker(a => addLineFromArticle(a));
+  $("#addObject").onclick = () => articlePicker(a => addLineFromArticle(a), "objet");
+  $("#addPrint").onclick = () => printPicker(t => addLine({
+    kind: "print", universe: "print", supplied: true, name: t.name, availableSizes: ["Quantité"], sizes: {}, colors: [], color: "",
+    perso: [{ id: uid("p"), techniqueId: t.id, formatId: t.formats?.[0]?.id || "", options: defaultOptions(t), position: "", w: "", h: "", colors: 1, design: "Visuel" }],
+  }));
   $("#addFree").onclick = () => addLine({ name: "", ref: "", cost: 0, availableSizes: ["Unique"], sizes: {} }, true);
   $("#addSupplied").onclick = () => addLine({ name: "Textile fourni par le client", supplied: true, availableSizes: ["Unique"], sizes: {} }, true);
   $("#feePreset").onchange = e => {
@@ -225,19 +235,20 @@ function drawClientLink() {
 }
 
 /* -------- Sélecteur de références -------- */
-export function articlePicker(onPick) {
-  const cats = [...new Set(S.catalog.map(a => a.category).filter(Boolean))];
+export function articlePicker(onPick, universe = "textile") {
+  const pool = S.catalog.filter(a => (a.universe || "textile") === universe);
+  const cats = [...new Set(pool.map(a => a.category).filter(Boolean))];
   const m = modal({
-    title: "Ajouter une référence", size: "wide",
+    title: universe === "objet" ? "Ajouter un objet personnalisé" : "Ajouter une référence textile", size: "wide",
     body: `<div class="row" style="margin-bottom:12px"><div class="search" style="max-width:none">${icon("search", "sm")}<input type="search" id="apS" placeholder="Référence, nom, marque…"></div>
       <select id="apC" style="width:180px"><option value="">Toutes catégories</option>${cats.map(c => `<option>${h(c)}</option>`).join("")}</select></div>
       <div id="apL" style="max-height:55vh;overflow:auto"></div>`,
   });
   const draw = () => {
     const s = $("#apS", m.el).value.toLowerCase(), cat = $("#apC", m.el).value;
-    const list = S.catalog.filter(a => (!cat || a.category === cat) && (!s || [a.ref, a.name, a.brand, a.category].join(" ").toLowerCase().includes(s)));
+    const list = pool.filter(a => (!cat || a.category === cat) && (!s || [a.ref, a.name, a.brand, a.category].join(" ").toLowerCase().includes(s)));
     $("#apL", m.el).innerHTML = list.length ? `<table class="t"><tbody>${list.map(a => `<tr class="click" data-a="${a.id}">
-      <td style="width:56px"><div class="thumb">${a.image ? `<img src="${h(a.image)}">` : icon("shirt", "sm")}</div></td>
+      <td style="width:56px"><div class="thumb">${a.image ? `<img src="${h(a.image)}">` : icon(universe === "objet" ? "sparkle" : "shirt", "sm")}</div></td>
       <td><b>${h(a.name)}</b><br><small>${h([a.ref, a.brand, a.category].filter(Boolean).join(" · "))}</small></td>
       <td><small>${h((a.colors || []).slice(0, 4).join(", "))}${(a.colors || []).length > 4 ? "…" : ""}</small></td>
       <td class="r num"><small class="muted">achat ${fmtEUR(a.cost)}</small></td></tr>`).join("")}</tbody></table>`
@@ -248,8 +259,21 @@ export function articlePicker(onPick) {
   draw();
 }
 
+/** Choix d'un produit imprimé (flyers, cartes, affiches…). */
+function printPicker(onPick) {
+  const list = E.techniques.filter(t => t.universe === "print");
+  const m = modal({
+    title: "Ajouter un imprimé", size: "wide",
+    body: list.length ? `<div class="grid g2">${list.map(t => `<button class="card tech-card" data-t="${h(t.id)}" style="text-align:left;border:1px solid var(--border)"><div class="ic" style="background:${h(t.color)}">${icon("print")}</div><div><b>${h(t.name)}</b><br><small class="muted">${h(t.description || "")}</small><br><small>${(t.formats || []).map(f => h(f.label)).join(" · ")}</small></div></button>`).join("")}</div>`
+      : `<div class="empty">Aucun produit imprimé. Créez-en un dans <a href="#/techniques">Marquages & tarifs</a> (univers « Print »).</div>`,
+  });
+  $$("[data-t]", m.el).forEach(b => b.onclick = () => { m.close(); onPick(list.find(t => t.id === b.dataset.t)); });
+}
+/** Options par défaut : la première de chaque groupe (ex. papier standard). */
+const defaultOptions = t => { const seen = new Set(); return (t.options || []).filter(o => o.group && !seen.has(o.group) && seen.add(o.group)).map(o => o.id); };
+
 export const lineFromArticle = a => ({
-  id: uid("l"), articleId: a.id, ref: a.ref, name: a.name, brand: a.brand, image: a.image, cost: a.cost, coef: a.coef,
+  id: uid("l"), universe: a.universe || "textile", articleId: a.id, ref: a.ref, name: a.name, brand: a.brand, image: a.image, cost: a.cost, coef: a.coef,
   salePrice: a.salePrice, sizeSurcharges: a.sizeSurcharges || {}, availableSizes: a.sizes?.length ? a.sizes : ["Unique"],
   colors: a.colors || [], color: a.colors?.[0] || "", sizes: {}, perso: [],
 });
@@ -273,32 +297,33 @@ function drawLines() {
   box.innerHTML = `<datalist id="positions">${positions.map(p => `<option value="${h(p)}">`).join("")}</datalist>` + q.lines.map((l, i) => {
     const sizes = l.availableSizes?.length ? l.availableSizes : DEFAULT_SIZES;
     const custom = !l.articleId;
+    const uni = lineUni(l), isPrint = uni === "print";
     return `<div class="line" data-line="${l.id}">
     <div class="line-h">
       <span class="line-num">${i + 1}</span>
-      <div class="thumb">${l.image ? `<img src="${h(l.image)}">` : icon(l.supplied ? "brush" : "shirt", "sm")}</div>
+      <div class="thumb">${l.image ? `<img src="${h(l.image)}">` : icon(isPrint ? "print" : uni === "objet" ? "sparkle" : l.supplied ? "brush" : "shirt", "sm")}</div>
       <div class="title">${custom
         ? `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="sm" data-f="name" value="${h(l.name)}" placeholder="Désignation de l'article"><input class="sm" style="width:110px" data-f="ref" value="${h(l.ref)}" placeholder="Réf."></div>`
         : `<b>${h(l.name)}</b><small class="muted">${h([l.ref, l.brand].filter(Boolean).join(" · "))}</small>`}</div>
-      ${l.colors?.length ? `<select class="sm" data-f="color" style="width:150px">${l.colors.map(c => `<option ${c === l.color ? "selected" : ""}>${h(c)}</option>`).join("")}<option value="__other">Autre…</option></select>`
-        : `<input class="sm" data-f="color" style="width:150px" value="${h(l.color)}" placeholder="Couleur textile">`}
+      ${isPrint ? "" : l.colors?.length ? `<select class="sm" data-f="color" style="width:150px">${l.colors.map(c => `<option ${c === l.color ? "selected" : ""}>${h(c)}</option>`).join("")}<option value="__other">Autre…</option></select>`
+        : `<input class="sm" data-f="color" style="width:150px" value="${h(l.color)}" placeholder="${uni === "objet" ? "Couleur" : "Couleur textile"}">`}
       <button class="btn sm ghost icon" data-act="up" title="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
       <button class="btn sm ghost icon" data-act="dup" title="Dupliquer (ex. autre couleur)">${icon("copy", "sm")}</button>
       <button class="btn sm ghost icon" data-act="del" title="Supprimer">${icon("trash", "sm")}</button>
     </div>
     <div class="line-b">
-      <div><div class="section-lbl">Quantités par taille <button class="link-btn" data-act="addsize" style="font-size:11.5px;text-transform:none;letter-spacing:0">+ taille</button></div>
+      <div><div class="section-lbl">${isPrint ? "Quantité (exemplaires)" : uni === "objet" ? "Quantité" : "Quantités par taille"} ${isPrint || uni === "objet" ? "" : `<button class="link-btn" data-act="addsize" style="font-size:11.5px;text-transform:none;letter-spacing:0">+ taille</button>`}</div>
         <div class="sizes">${sizes.map(s => `<label class="size-cell"><span>${h(s)}</span><input type="number" min="0" inputmode="numeric" data-size="${h(s)}" value="${l.sizes?.[s] || ""}" placeholder="0">${num(l.sizeSurcharges?.[s]) ? `<small class="sur">+${fmtEUR(l.sizeSurcharges[s])}</small>` : ""}</label>`).join("")}</div>
       </div>
-      ${l.supplied ? "" : `<div><div class="section-lbl">Textile</div><div class="textile-row">
+      ${l.supplied ? "" : `<div><div class="section-lbl">${uni === "objet" ? "Objet" : "Textile"}</div><div class="textile-row">
         <label class="f"><span>Prix d'achat HT</span><div class="input-group"><input type="number" class="sm" step="0.01" data-f="cost" value="${h(l.cost ?? "")}"><span class="addon">€</span></div></label>
         <label class="f"><span>Coefficient</span><div class="input-group"><input type="number" class="sm" step="0.05" data-f="coef" value="${h(l.coef ?? "")}" placeholder="${h(S.settings.defaultCoef)}"><span class="addon">×</span></div></label>
         <label class="f"><span>PU vente HT <small class="faint">(forcer)</small></span><div class="input-group"><input type="number" class="sm ${num(l.priceOverride) !== null ? "ov" : ""}" step="0.01" data-f="priceOverride" value="${h(l.priceOverride ?? "")}" data-tu="${l.id}"><span class="addon">€</span></div></label>
         <div class="f"><span style="display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Remise qté</span><div data-disc="${l.id}" style="height:30px;display:flex;align-items:center"></div></div>
       </div></div>`}
-      <div><div class="section-lbl">Marquages</div>
+      <div><div class="section-lbl">${isPrint ? "Impression" : "Marquages"}</div>
         <div data-persos>${(l.perso || []).map(p => persoRow(l, p)).join("") || `<small class="muted">Aucun marquage — article vendu neutre.</small>`}</div>
-        <button class="btn sm" data-act="addperso" style="margin-top:10px">${icon("plus", "sm")} Ajouter un marquage</button>
+        ${isPrint ? "" : `<button class="btn sm" data-act="addperso" style="margin-top:10px">${icon("plus", "sm")} Ajouter un marquage</button>`}
       </div>
       <label class="f"><span>Remarque sur la ligne (visible client)</span><input type="text" class="sm" data-f="note" value="${h(l.note)}" placeholder="Ex. : prénoms au dos selon liste jointe"></label>
     </div>
@@ -343,7 +368,7 @@ function drawLines() {
         l.availableSizes = [...new Set([...(l.availableSizes?.length ? l.availableSizes : DEFAULT_SIZES), s.trim()])];
       } else if (act === "addperso") {
         const prev = l.perso[l.perso.length - 1];
-        const t = E.techniques.find(x => x.id === prev?.techniqueId) || E.techniques[0];
+        const t = E.techniques.find(x => x.id === prev?.techniqueId) || techsOf(lineUni(l))[0] || E.techniques[0];
         const used = new Set(l.perso.map(p => p.position));
         l.perso.push({ id: uid("p"), techniqueId: t?.id, position: (S.settings.positions || []).find(p => !used.has(p)) || "", w: "", h: "", formatId: "", colors: 1, design: "" });
       }
@@ -354,26 +379,70 @@ function drawLines() {
       $$("[data-pf]", row).forEach(i => i.oninput = i.onchange = () => {
         const f = i.dataset.pf;
         p[f] = ["w", "h", "colors", "unitOverride"].includes(f) ? num(i.value) : i.value;
-        if (f === "techniqueId") { p.formatId = ""; p.unitOverride = null; setDirty(); drawLines(); recalc(); return; }
+        if (f === "techniqueId") {
+          const t = E.techniques.find(x => x.id === p.techniqueId);
+          p.formatId = lineUni(l) === "print" ? t?.formats?.[0]?.id || "" : ""; p.unitOverride = null; p.options = t ? defaultOptions(t) : [];
+          if (lineUni(l) === "print" && t) l.name = t.name;
+          setDirty(); drawLines(); recalc(); return;
+        }
         if (f === "unitOverride") i.classList.toggle("ov", num(i.value) !== null);
         setDirty(); recalc();
       });
-      $("[data-pdel]", row).onclick = () => { l.perso = l.perso.filter(x => x !== p); setDirty(); drawLines(); recalc(); };
+      // options (papier, recto-verso, finitions…) : listes par groupe + cases à cocher
+      $$("[data-pog]", row).forEach(sel => sel.onchange = () => {
+        const t = E.techniques.find(x => x.id === p.techniqueId);
+        const groupIds = (t?.options || []).filter(o => o.group === sel.dataset.pog).map(o => o.id);
+        p.options = [...(p.options || []).filter(id => !groupIds.includes(id)), ...(sel.value ? [sel.value] : [])];
+        setDirty(); recalc();
+      });
+      $$("[data-pochk]", row).forEach(c => c.onchange = () => {
+        p.options = (p.options || []).filter(id => id !== c.dataset.pochk);
+        if (c.checked) p.options.push(c.dataset.pochk);
+        setDirty(); recalc();
+      });
+      const del = $("[data-pdel]", row);
+      if (del) del.onclick = () => { l.perso = l.perso.filter(x => x !== p); setDirty(); drawLines(); recalc(); };
     });
   }
 }
 
+function optionsUI(t, p) {
+  const opts = t?.options || [];
+  if (!opts.length) return "";
+  const sel = new Set(p.options || []);
+  const groups = [...new Set(opts.filter(o => o.group).map(o => o.group))];
+  const fmtVal = o => o.type === "pct" ? (o.value ? ` (+${o.value} %)` : "") : o.type === "unit" ? ` (+${fmtEUR(o.value)}/u)` : ` (+${fmtEUR(o.value)})`;
+  return `<div class="row" style="grid-column:1/-1;gap:8px 14px">
+    ${groups.map(g => `<label class="f" style="min-width:170px"><span>${h(g)}</span><select class="sm" data-pog="${h(g)}"><option value="">—</option>${opts.filter(o => o.group === g).map(o => `<option value="${h(o.id)}" ${sel.has(o.id) ? "selected" : ""}>${h(o.label)}${fmtVal(o)}</option>`).join("")}</select></label>`).join("")}
+    ${opts.filter(o => !o.group).map(o => `<label class="check" style="align-self:end;height:30px"><input type="checkbox" data-pochk="${h(o.id)}" ${sel.has(o.id) ? "checked" : ""}> ${h(o.label)}<small class="muted">${fmtVal(o)}</small></label>`).join("")}
+  </div>`;
+}
+
 function persoRow(l, p) {
   const t = E.techniques.find(x => x.id === p.techniqueId);
+  const uni = lineUni(l);
+  const techSelect = `<label class="f"><span>${uni === "print" ? "Produit" : "Technique"}</span><select class="sm" data-pf="techniqueId">${techsOf(uni, p.techniqueId).map(x => `<option value="${h(x.id)}" ${x.id === p.techniqueId ? "selected" : ""}>${h(x.name)}</option>`).join("")}</select></label>`;
+  const pu = `<label class="f"><span>PU HT <small class="faint">(forcer)</small></span><div class="input-group"><input type="number" class="sm ${num(p.unitOverride) !== null ? "ov" : ""}" step="0.0001" data-pf="unitOverride" data-pu="${p.id}" value="${h(p.unitOverride ?? "")}"><span class="addon">€</span></div></label>`;
+  if (uni === "print") {
+    return `<div class="perso" data-perso="${p.id}" style="--pc:${h(t?.color || "#4f46e5")}">
+    ${techSelect}
+    <label class="f"><span>Format</span><select class="sm" data-pf="formatId">${(t?.formats || []).map(f => `<option value="${h(f.id)}" ${f.id === p.formatId ? "selected" : ""}>${h(f.label)}</option>`).join("")}</select></label>
+    <label class="f"><span title="Même nom de fichier sur plusieurs lignes = quantités cumulées">Fichier ⓘ</span><input class="sm" data-pf="design" value="${h(p.design)}" placeholder="Flyer saison"></label>
+    ${pu}
+    ${optionsUI(t, p)}
+    <div class="fmt-hint" data-ph="${p.id}"></div>
+  </div>`;
+  }
   return `<div class="perso" data-perso="${p.id}" style="--pc:${h(t?.color || "#4f46e5")}">
-    <label class="f"><span>Technique</span><select class="sm" data-pf="techniqueId">${E.techniques.map(x => `<option value="${h(x.id)}" ${x.id === p.techniqueId ? "selected" : ""}>${h(x.name)}</option>`).join("")}</select></label>
-    <label class="f"><span>Emplacement</span><input class="sm" list="positions" data-pf="position" value="${h(p.position)}" placeholder="Cœur, dos…"></label>
+    ${techSelect}
+    <label class="f"><span>Emplacement</span><input class="sm" list="positions" data-pf="position" value="${h(p.position)}" placeholder="${uni === "objet" ? "Face, corps, clip…" : "Cœur, dos…"}"></label>
     <label class="f"><span>Dimensions (cm)</span><div class="dims"><input type="number" class="sm" step="0.5" min="0" data-pf="w" value="${h(p.w ?? "")}" placeholder="L"><span class="muted">×</span><input type="number" class="sm" step="0.5" min="0" data-pf="h" value="${h(p.h ?? "")}" placeholder="H"></div></label>
     <label class="f"><span>Format tarifaire</span><select class="sm" data-pf="formatId"><option value="">Auto</option>${(t?.formats || []).map(f => `<option value="${h(f.id)}" ${f.id === p.formatId ? "selected" : ""}>${h(f.label)}</option>`).join("")}</select></label>
     <label class="f"><span>Couleurs</span><input type="number" class="sm" min="1" max="${t?.maxColors || 12}" data-pf="colors" value="${h(p.colors ?? 1)}" ${t?.colorsEnabled ? "" : "disabled title='Non applicable pour cette technique'"}></label>
     <label class="f"><span title="Même nom de visuel sur plusieurs lignes = quantités cumulées et frais fixes payés une seule fois">Visuel ⓘ</span><input class="sm" data-pf="design" value="${h(p.design)}" placeholder="Logo club"></label>
-    <label class="f"><span>PU HT <small class="faint">(forcer)</small></span><div class="input-group"><input type="number" class="sm ${num(p.unitOverride) !== null ? "ov" : ""}" step="0.01" data-pf="unitOverride" data-pu="${p.id}" value="${h(p.unitOverride ?? "")}"><span class="addon">€</span></div></label>
+    ${pu}
     <button class="btn sm ghost icon del" data-pdel title="Retirer">${icon("x", "sm")}</button>
+    ${optionsUI(t, p)}
     <div class="fmt-hint" data-ph="${p.id}"></div>
   </div>`;
 }
@@ -435,7 +504,8 @@ function recalc(redrawSetups = true) {
       if (pu) pu.placeholder = p.computed.toFixed(2);
       const ph = $(`[data-ph="${p.id}"]`);
       if (ph) ph.innerHTML = `<span class="chip">${p.auto ? "Auto : " : ""}${h(p.formatLabel)}</span>
-        <span class="chip" title="Palier de prix appliqué">Palier ${p.breakMin}+ pcs${p.breakQty !== l.qty ? ` · cumul visuel ${p.breakQty} pcs` : ""}</span>
+        ${(p.options || []).map(o => `<span class="chip gray">${h(o)}</span>`).join("")}
+        <span class="chip" title="Palier de prix appliqué">Palier ${p.breakMin}+ ${l.kind === "print" ? "ex." : "pcs"}${p.breakQty !== l.qty ? ` · cumul ${p.breakQty}` : ""}</span>
         <span class="muted">${fmtEUR(p.unit)} × ${l.qty} = <b>${fmtEUR(p.total)}</b></span>
         ${p.warnings.map(w => `<span class="chip warn">${icon("alert", "sm")} ${h(w)}</span>`).join("")}`;
     }
@@ -443,7 +513,7 @@ function recalc(redrawSetups = true) {
     const lm = l.total ? Math.round((l.total - l.cost) / l.total * 100) : 0;
     if (lf) lf.innerHTML = `
       <span><span class="k">Qté</span> <span class="v num">${l.qty}</span></span>
-      ${src?.supplied ? "" : `<span><span class="k">Textile</span> <span class="num">${fmtEUR(l.textileUnit)}</span></span>`}
+      ${src?.supplied ? "" : `<span><span class="k">${l.universe === "objet" ? "Objet" : "Textile"}</span> <span class="num">${fmtEUR(l.textileUnit)}</span></span>`}
       ${l.persos.length ? `<span><span class="k">Marquage</span> <span class="num">${fmtEUR(l.persoUnit)}</span></span>` : ""}
       <span><span class="k">PU HT</span> <span class="v num">${fmtEUR(l.unit)}</span></span>
       <span title="Marge sur la ligne (hors frais fixes)"><span class="k">Marge</span> <span class="num" style="color:${lm < 25 ? "var(--danger)" : "var(--success)"}">${lm} %</span></span>
@@ -466,8 +536,8 @@ function drawSummary(c) {
   const row = (k, v, cls = "") => `<div class="sum-row ${cls}"><span>${k}</span><span class="num">${v}</span></div>`;
   $("#summary").innerHTML = `<div class="card-h"><h2>Récapitulatif</h2><select class="sm" id="status" style="width:auto">${Object.entries(QUOTE_STATUSES).map(([k, v]) => `<option value="${k}" ${k === q.status ? "selected" : ""}>${v.label}</option>`).join("")}</select></div>
   <div class="card-b">
-    ${row("Textile", fmtEUR(T.textile))}
-    ${row("Marquages", fmtEUR(T.perso))}
+    ${row(c.lines.some(l => l.universe === "objet") ? "Articles (textile & objets)" : "Textile", fmtEUR(T.textile))}
+    ${row(c.lines.some(l => l.kind === "print") ? "Marquages & impression" : "Marquages", fmtEUR(T.perso))}
     ${T.setupTotal ? row("Frais techniques", fmtEUR(T.setupTotal)) : ""}
     ${T.feesTotal ? row("Frais annexes", fmtEUR(T.feesTotal)) : ""}
     ${T.discount ? row(`Remise ${T.discountPct} %`, "− " + fmtEUR(T.discount), "sub") : ""}
@@ -558,8 +628,10 @@ function autoSpecs() {
   if (!c) return "";
   return c.lines.map(l => {
     const sizes = l.sizeRows.map(r => `${r.size}×${r.qty}`).join(", ");
-    const ps = l.persos.map(p => `   • ${p.techniqueName} — ${p.position || "emplacement à préciser"}${p.w && p.h ? ` — ${p.w}×${p.h} cm` : ` — ${p.formatLabel}`}${p.colorsEnabled ? ` — ${p.colors} couleur${p.colors > 1 ? "s" : ""}` : ""}${p.design ? ` — visuel « ${p.design} »` : ""}`).join("\n");
-    return `${l.name}${l.color ? ` — ${l.color}` : ""} (${l.qty} pcs : ${sizes})${ps ? "\n" + ps : ""}`;
+    const opt = p => (p.options || []).length ? ` — ${p.options.join(", ")}` : "";
+    if (l.kind === "print") return `${l.name} — ${l.persos.map(p => `${p.formatLabel}${opt(p)}`).join(" / ")} — ${l.qty} exemplaires`;
+    const ps = l.persos.map(p => `   • ${p.techniqueName} — ${p.position || "emplacement à préciser"}${p.w && p.h ? ` — ${p.w}×${p.h} cm` : ` — ${p.formatLabel}`}${p.colorsEnabled ? ` — ${p.colors} couleur${p.colors > 1 ? "s" : ""}` : ""}${opt(p)}${p.design ? ` — visuel « ${p.design} »` : ""}`).join("\n");
+    return `${l.name}${l.color ? ` — ${l.color}` : ""} (${l.qty} pcs${l.universe === "textile" ? ` : ${sizes}` : ""})${ps ? "\n" + ps : ""}`;
   }).join("\n");
 }
 

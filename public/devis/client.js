@@ -22,6 +22,13 @@ async function upload(file) {
   return call("POST", "/upload", { dataUrl, name: file.name });
 }
 
+/** Description d'un marquage (ou d'une impression) pour le client. */
+function persoText(l, p) {
+  const opts = (p.options || []).map(h).join(" · ");
+  if (l.kind === "print") return `${h(p.format)}${opts ? ` · ${opts}` : ""}`;
+  return `${h(p.technique)} — ${h(p.position || "")}${p.w && p.h ? ` · ${p.w}×${p.h} cm` : ` · ${h(p.format)}`}${p.colors ? ` · ${p.colors} coul.` : ""}${opts ? ` · ${opts}` : ""}`;
+}
+
 /* ---------- Pad de signature ---------- */
 function signaturePad(canvas) {
   const ctx = canvas.getContext("2d");
@@ -111,7 +118,7 @@ function render() {
       <div class="table-wrap"><table class="t lines-t"><thead><tr><th>Article</th><th class="hide-m">Tailles</th><th class="r">Qté</th><th class="r">PU HT</th><th class="r">Total HT</th></tr></thead><tbody>
       ${D.lines.map(l => `<tr><td><div class="row" style="flex-wrap:nowrap;align-items:flex-start">${l.image ? `<div class="thumb"><img src="${h(l.image)}"></div>` : ""}<div>
         <b>${h(l.name)}</b>${l.color ? ` — ${h(l.color)}` : ""}<br><small class="muted">${h([l.ref, l.brand].filter(Boolean).join(" · "))}</small>
-        ${l.persos.length ? `<ul class="persos">${l.persos.map(p => `<li>${h(p.technique)} — ${h(p.position || "")}${p.w && p.h ? ` · ${p.w}×${p.h} cm` : ` · ${h(p.format)}`}${p.colors ? ` · ${p.colors} coul.` : ""}</li>`).join("")}</ul>` : ""}
+        ${l.persos.length ? `<ul class="persos">${l.persos.map(p => `<li>${persoText(l, p)}</li>`).join("")}</ul>` : ""}
         ${l.note ? `<div style="font-size:12.5px;margin-top:4px">${h(l.note)}</div>` : ""}</div></div></td>
         <td class="hide-m"><small>${l.sizes.map(s => `${h(s.size)} : ${s.qty}`).join("<br>")}</small></td>
         <td class="r num">${l.qty}</td><td class="r num">${fmtEUR(l.unit)}</td><td class="r num"><b>${fmtEUR(l.total)}</b></td></tr>`).join("")}
@@ -309,7 +316,7 @@ function renderPrint() {
     <table class="t"><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">PU HT</th><th class="r">Total HT</th></tr></thead><tbody>
     ${D.lines.map(l => `<tr><td><b>${h(l.name)}</b>${l.color ? ` — ${h(l.color)}` : ""}${l.ref ? ` <span class="muted">(${h(l.ref)})</span>` : ""}
       <div class="muted" style="font-size:11px">${l.sizes.map(s => `${h(s.size)}×${s.qty}`).join(", ")}</div>
-      ${l.persos.map(p => `<div style="font-size:11px">◆ ${h(p.technique)} — ${h(p.position || "")}${p.w && p.h ? ` · ${p.w}×${p.h} cm` : ` · ${h(p.format)}`}${p.colors ? ` · ${p.colors} coul.` : ""}</div>`).join("")}
+      ${l.persos.map(p => `<div style="font-size:11px">◆ ${persoText(l, p)}</div>`).join("")}
       ${l.note ? `<div style="font-size:11px;font-style:italic">${h(l.note)}</div>` : ""}</td>
       <td class="r num">${l.qty}</td><td class="r num">${fmtEUR(l.unit)}</td><td class="r num">${fmtEUR(l.total)}</td></tr>`).join("")}
     ${D.setups.map(s => `<tr><td>${h(s.label)}</td><td class="r">1</td><td class="r num">${fmtEUR(s.amount)}</td><td class="r num">${fmtEUR(s.amount)}</td></tr>`).join("")}

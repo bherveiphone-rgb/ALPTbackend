@@ -212,6 +212,10 @@ export function crmRoutes(router, ctx) {
     product: clean(it.product, 120), articleId: clean(it.articleId, 60), color: clean(it.color, 80),
     quantity: Math.max(0, Math.min(100000, parseInt(it.quantity, 10) || 0)), sizes: clean(it.sizes, 300),
     notes: clean(it.notes, 1000),
+    universe: ["objet", "print"].includes(it.universe) ? it.universe : "textile",
+    formatId: clean(it.formatId, 40), options: (Array.isArray(it.options) ? it.options : []).slice(0, 12).map(x => clean(x, 40)),
+    w: Number(it.w) > 0 ? Math.min(1000, Number(it.w)) : null, h: Number(it.h) > 0 ? Math.min(1000, Number(it.h)) : null,
+    fileStatus: ["pret", "a_creer"].includes(it.fileStatus) ? it.fileStatus : "",
     positions: (Array.isArray(it.positions) ? it.positions : []).slice(0, 8).map(p => ({
       position: clean(p.position, 80), w: Number(p.w) > 0 ? Math.min(200, Number(p.w)) : null, h: Number(p.h) > 0 ? Math.min(200, Number(p.h)) : null,
       technique: clean(p.technique, 60), colors: Math.max(1, Math.min(12, parseInt(p.colors, 10) || 1)),
@@ -271,18 +275,33 @@ export function crmRoutes(router, ctx) {
     if (r.quoteId && db.get("quotes").some(q => q.id === r.quoteId)) return res.json({ id: r.quoteId, existing: true });
     const catalog = db.get("catalog"), techniques = db.get("techniques");
     const totalQty = r.items.reduce((s, it) => s + it.quantity, 0);
-    const findTech = name => {
+    const uni = x => x.universe || "textile";
+    const findTech = (name, universe, qty) => {
+      const pool = techniques.filter(x => uni(x) === universe);
       const n = String(name || "").toLowerCase();
-      const t = n && techniques.find(x => x.id === n || x.name.toLowerCase() === n || x.name.toLowerCase().includes(n) || n.includes(x.id));
+      const t = n && pool.find(x => x.id === n || x.name.toLowerCase() === n || x.name.toLowerCase().includes(n) || n.includes(x.id));
       if (t) return t;
-      // conseil par défaut : sérigraphie dès 25 pièces, sinon transfert sans frais fixes
-      return techniques.find(x => x.id === (totalQty >= 25 ? "serigraphie" : "dtf")) || techniques[0];
+      // conseil par défaut : sérigraphie dès 25 pièces (sinon transfert) ; tampographie dès 100 objets (sinon UV)
+      const pref = universe === "objet" ? (qty >= 100 ? "tampo" : "uv") : (totalQty >= 25 ? "serigraphie" : "dtf");
+      return pool.find(x => x.id === pref) || pool[0] || techniques[0];
     };
     const lines = r.items.map((it, i) => {
+      if (it.universe === "print") {
+        const t = findTech(it.product, "print", it.quantity);
+        const options = [...it.options];
+        if (it.fileStatus === "a_creer" && t?.options?.some(o => o.id === "crea") && !options.includes("crea")) options.push("crea");
+        return {
+          id: uid("l"), kind: "print", universe: "print", supplied: true, name: t?.name || it.product || "Impression", ref: "", image: "",
+          availableSizes: ["Quantité"], sizes: { "Quantité": it.quantity || 0 }, colors: [], color: "",
+          note: [it.notes, it.fileStatus === "pret" ? "Fichier fourni par le client" : it.fileStatus === "a_creer" ? "Création graphique demandée" : ""].filter(Boolean).join(" — "),
+          perso: t ? [{ id: uid("p"), techniqueId: t.id, position: "", w: it.w ?? "", h: it.h ?? "", formatId: it.formatId || "", colors: 1, design: `Visuel ${i + 1}`, options: options.filter(id => t.options?.some(o => o.id === id)) }] : [],
+        };
+      }
+      const pool = catalog.filter(x => uni(x) === it.universe);
       const prod = (it.product || "").toLowerCase();
-      const exact = catalog.find(x => x.id === it.articleId) || catalog.find(x => prod && (x.ref?.toLowerCase() === prod || x.name.toLowerCase() === prod));
+      const exact = catalog.find(x => x.id === it.articleId) || pool.find(x => prod && (x.ref?.toLowerCase() === prod || x.name.toLowerCase() === prod));
       // sinon : première référence de la catégorie demandée (modèle à confirmer)
-      const a = exact || catalog.find(x => prod && x.category?.toLowerCase() === prod);
+      const a = exact || pool.find(x => prod && x.category?.toLowerCase() === prod);
       const sizes = parseSizes(it.sizes);
       const sum = Object.values(sizes).reduce((s, n) => s + n, 0);
       let availableSizes = a?.sizes?.length ? [...a.sizes] : ["Unique"];
@@ -293,11 +312,11 @@ export function crmRoutes(router, ctx) {
         sizes[k] = (sizes[k] || 0) + it.quantity - sum;
       }
       return {
-        id: uid("l"), articleId: a?.id || null, ref: a?.ref || "", name: a?.name || it.product || `Article ${i + 1}`, brand: a?.brand || "",
+        id: uid("l"), universe: it.universe, articleId: a?.id || null, ref: a?.ref || "", name: a?.name || it.product || `Article ${i + 1}`, brand: a?.brand || "",
         image: a?.image || "", cost: a?.cost ?? 0, coef: a?.coef ?? null, salePrice: a?.salePrice ?? null, sizeSurcharges: a?.sizeSurcharges || {},
         availableSizes, colors: a?.colors || (it.color ? [it.color] : []), color: it.color || a?.colors?.[0] || "", sizes,
         note: [it.notes, !exact && it.product ? (a ? `Modèle proposé pour « ${it.product} » — à confirmer` : "Article à confirmer") : ""].filter(Boolean).join(" — "),
-        perso: it.positions.map(p => ({ id: uid("p"), techniqueId: findTech(p.technique).id, position: p.position, w: p.w ?? "", h: p.h ?? "", formatId: "", colors: p.colors || 1, design: "Logo" })),
+        perso: it.positions.map(p => ({ id: uid("p"), techniqueId: findTech(p.technique, it.universe, it.quantity).id, position: p.position, w: p.w ?? "", h: p.h ?? "", formatId: "", colors: p.colors || 1, design: "Logo" })),
       };
     });
     const c = r.clientId ? db.get("clients").find(x => x.id === r.clientId) : null;
@@ -315,12 +334,16 @@ export function crmRoutes(router, ctx) {
   /* ================= FORMULAIRE PUBLIC ================= */
   router.get("/public/form", (_req, res) => {
     const s = db.get("settings");
-    const cats = [...new Set(db.get("catalog").map(a => a.category).filter(Boolean))];
+    const catalog = db.get("catalog");
+    const catsOf = u => [...new Set(catalog.filter(a => (a.universe || "textile") === u).map(a => a.category).filter(Boolean))];
     res.json({
       company: { name: s.company.name, logo: s.company.logo, phone: s.company.phone, email: s.company.email, website: s.company.website },
-      categories: cats.length ? cats : ["T-shirt", "Polo", "Sweat", "Veste", "Casquette", "Sac"],
-      catalog: db.get("catalog").map(a => ({ id: a.id, name: a.name, ref: a.ref, brand: a.brand, category: a.category, image: a.image, colors: a.colors, sizes: a.sizes })),
-      techniques: db.get("techniques").map(t => ({ id: t.id, name: t.name, description: t.description })),
+      categories: catsOf("textile").length ? catsOf("textile") : ["T-shirt", "Polo", "Sweat", "Veste", "Casquette", "Sac"],
+      objectCategories: catsOf("objet"),
+      catalog: catalog.map(a => ({ id: a.id, universe: a.universe || "textile", name: a.name, ref: a.ref, brand: a.brand, category: a.category, image: a.image, colors: a.colors, sizes: a.sizes })),
+      techniques: db.get("techniques").map(t => ({ id: t.id, universe: t.universe || "textile", name: t.name, description: t.description,
+        ...(t.universe === "print" ? { formats: (t.formats || []).map(f => ({ id: f.id, label: f.label })), minQty: t.minQty || 1,
+          options: (t.options || []).filter(o => o.id !== "crea").map(o => ({ id: o.id, label: o.label, group: o.group || "" })) } : {}) })),
       positions: s.positions, intro: s.formIntro || "",
     });
   });

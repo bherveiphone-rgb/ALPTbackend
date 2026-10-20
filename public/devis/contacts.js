@@ -421,10 +421,12 @@ export async function renderRequest(main, id) {
   <div class="grid g2" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);align-items:start">
     <div class="stack">
       <div class="card"><div class="card-h"><h2>${h(r.subject || "Besoin")}</h2><small class="muted">${qty} pièce${qty > 1 ? "s" : ""}</small></div><div class="card-b stack">
-        ${r.items.map((it, i) => `<div class="step-card"><div class="row between"><b>${i + 1}. ${h(it.product || "Article")}${it.color ? ` — ${h(it.color)}` : ""}</b><span class="chip">${it.quantity} pcs</span></div>
-          ${it.sizes ? `<div><small class="muted">Tailles :</small> ${h(it.sizes)}</div>` : ""}
+        ${r.items.map((it, i) => { const pt = it.universe === "print" ? S.techniques.find(t => t.id === it.product) : null; return `<div class="step-card"><div class="row between"><b>${i + 1}. ${{ objet: "🎁 ", print: "🖨️ " }[it.universe] || ""}${h(pt?.name || it.product || "Article")}${it.color ? ` — ${h(it.color)}` : ""}</b><span class="chip">${it.quantity} ${it.universe === "print" ? "ex." : "pcs"}</span></div>
+          ${it.sizes ? `<div><small class="muted">${it.universe === "print" ? "Format" : "Tailles"} :</small> ${h(it.sizes)}</div>` : ""}
+          ${(it.options || []).length ? `<div class="row" style="gap:4px;margin-top:4px">${it.options.map(id => `<span class="chip gray">${h(pt?.options?.find(o => o.id === id)?.label || id)}</span>`).join("")}</div>` : ""}
+          ${it.fileStatus ? `<div style="margin-top:4px">${it.fileStatus === "pret" ? badge("Fichier prêt", "success") : badge("Création graphique demandée", "warning")}</div>` : ""}
           ${it.positions.map(p => `<div style="font-size:13px;margin-top:4px">◆ ${h(p.position || "Emplacement ?")}${p.w && p.h ? ` · <b>${p.w}×${p.h} cm</b>` : ""}${p.technique ? ` · ${h(S.techniques.find(t => t.id === p.technique)?.name || p.technique)}` : ""}${p.colors > 1 ? ` · ${p.colors} couleurs` : ""}</div>`).join("")}
-          ${it.notes ? `<div style="margin-top:4px"><small>${h(it.notes)}</small></div>` : ""}</div>`).join("") || `<small class="muted">Pas d'article détaillé.</small>`}
+          ${it.notes ? `<div style="margin-top:4px"><small>${h(it.notes)}</small></div>` : ""}</div>`; }).join("") || `<small class="muted">Pas d'article détaillé.</small>`}
         ${r.message ? `<div><div class="section-lbl">Message</div><div style="white-space:pre-wrap">${h(r.message)}</div></div>` : ""}
         ${r.budget || r.event ? `<div class="row">${r.budget ? `<span class="chip">Budget : ${h(r.budget)}</span>` : ""}${r.event ? `<span class="chip">Événement : ${h(r.event)}</span>` : ""}</div>` : ""}
       </div></div>

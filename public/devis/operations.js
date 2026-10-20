@@ -104,9 +104,9 @@ export async function renderSheet(main, id) {
       <div style="text-align:right">${q.deadline ? `<div style="font-size:18px;font-weight:800;color:var(--danger)">Pour le ${fmtDate(q.deadline)}</div>` : ""}<div class="muted">Imprimée le ${fmtDate(Date.now(), true)}</div>
       <div>${bat?.status === "valide" ? badge(`BAT V${bat.version} validé`, "success") : badge("BAT NON VALIDÉ", "danger")}</div></div></div>
     <table class="t" style="margin-top:18px"><thead><tr><th>Article</th><th>Couleur</th><th>Tailles</th><th class="r">Total</th><th>Marquages</th></tr></thead><tbody>
-    ${c.lines.map(l => `<tr><td><b>${h(l.name)}</b><br><small>${h(l.ref)}</small>${l.supplied ? `<br>${badge("Textile fourni", "warning")}` : ""}</td><td>${h(l.color)}</td>
+    ${c.lines.map(l => `<tr><td><b>${h(l.name)}</b><br><small>${h(l.ref)}</small>${l.supplied && l.kind !== "print" ? `<br>${badge("Textile fourni", "warning")}` : ""}</td><td>${h(l.color)}</td>
       <td>${l.sizeRows.map(r => `<span class="sz">${h(r.size)} : ${r.qty}</span>`).join(" ")}</td><td class="r"><b style="font-size:16px">${l.qty}</b></td>
-      <td>${l.persos.map(p => `<div>◆ <b>${h(p.techniqueName)}</b> — ${h(p.position || "?")}${p.w && p.h ? ` — ${p.w}×${p.h} cm` : ` — ${h(p.formatLabel)}`}${p.colorsEnabled ? ` — ${p.colors} coul.` : ""}${p.design ? ` — « ${h(p.design)} »` : ""}</div>`).join("")}</td></tr>
+      <td>${l.persos.map(p => `<div>◆ <b>${h(p.techniqueName)}</b> — ${h(p.position || "?")}${p.w && p.h ? ` — ${p.w}×${p.h} cm` : ` — ${h(p.formatLabel)}`}${p.colorsEnabled ? ` — ${p.colors} coul.` : ""}${(p.options || []).length ? ` — ${p.options.map(h).join(", ")}` : ""}${p.design ? ` — « ${h(p.design)} »` : ""}</div>`).join("")}</td></tr>
       ${l.note ? `<tr><td colspan="5" style="background:#fff8e6"><small>📝 ${h(l.note)}</small></td></tr>` : ""}`).join("")}
     </tbody></table>
     <div class="row" style="margin-top:10px;gap:20px"><div><small class="muted">Total pièces</small><b style="display:block;font-size:20px">${c.totals.qty}</b></div>

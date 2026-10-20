@@ -171,3 +171,109 @@ export function mergeSettings(v) {
   s.lostReasons = Array.isArray(v.lostReasons) ? v.lostReasons : ["Prix trop élevé", "Délai trop long", "Concurrent", "Projet abandonné", "Pas de réponse"];
   return s;
 }
+
+/* ---------------- Objets personnalisés & print (ajoutés en v2) ---------------- */
+const o = (id, label, group, type, value) => ({ id, label, group, type, value });
+export const SEED_TECHNIQUES_V2 = [
+  // --- Objets ---
+  {
+    id: "tampo", universe: "objet", name: "Tampographie", color: "#0891b2", colorsEnabled: true, maxColors: 4, minQty: 100,
+    setupFee: 0, setupPerColor: 35, setupLabel: "Cliché", costPct: 35, description: "Stylos, gourdes, objets en plastique : marquage 1 à 4 couleurs.",
+    formats: [fmt("s", "Petit ≤ 4×2 cm", 4, 2), fmt("m", "Moyen ≤ 6×3 cm", 6, 3), fmt("l", "Grand ≤ 9×5 cm", 9, 5)],
+    breaks: [100, 250, 500, 1000, 2500, 5000],
+    prices: { s: [0.45, 0.3, 0.22, 0.16, 0.12, 0.1], m: [0.55, 0.38, 0.28, 0.2, 0.15, 0.12], l: [0.7, 0.48, 0.35, 0.26, 0.2, 0.16] },
+    extraColorPrices: [0.25, 0.18, 0.13, 0.1, 0.08, 0.06], options: [],
+  },
+  {
+    id: "laser", universe: "objet", name: "Gravure laser", color: "#78716c", colorsEnabled: false, maxColors: 0, minQty: 1,
+    setupFee: 15, setupPerColor: 0, setupLabel: "Programmation", costPct: 30, description: "Métal, bois, verre, cuir : gravure fine et indélébile.",
+    formats: [fmt("s", "Petit ≤ 3×1 cm", 3, 1), fmt("m", "Moyen ≤ 6×3 cm", 6, 3), fmt("l", "Grand ≤ 10×6 cm", 10, 6)],
+    breaks: [1, 10, 50, 100, 250, 500],
+    prices: { s: [3.5, 2, 1.1, 0.8, 0.6, 0.5], m: [5, 2.8, 1.6, 1.2, 0.9, 0.75], l: [7.5, 4.2, 2.4, 1.8, 1.4, 1.1] },
+    extraColorPrices: [0, 0, 0, 0, 0, 0], options: [o("deux", "Gravure 2 faces", "", "pct", 80), o("nom", "Prénom personnalisé par pièce", "", "unit", 1.5)],
+  },
+  {
+    id: "uv", universe: "objet", name: "Impression UV quadri", color: "#a855f7", colorsEnabled: false, maxColors: 0, minQty: 1,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 40, description: "Quadrichromie directe sur objet (coques, plaques, goodies).",
+    formats: [fmt("s", "≤ 5×5 cm", 5, 5), fmt("m", "≤ 10×10 cm", 10, 10), fmt("l", "≤ 20×20 cm", 20, 20)],
+    breaks: [1, 10, 50, 100, 250, 500],
+    prices: { s: [4, 2.5, 1.5, 1.1, 0.85, 0.7], m: [6.5, 4, 2.4, 1.8, 1.4, 1.15], l: [11, 7, 4.2, 3.2, 2.5, 2.1] },
+    extraColorPrices: [0, 0, 0, 0, 0, 0], options: [o("blanc", "Sous-couche blanche", "", "pct", 15), o("vernis", "Vernis sélectif", "", "pct", 25)],
+  },
+  {
+    id: "sublim", universe: "objet", name: "Sublimation (mugs, tapis…)", color: "#e11d48", colorsEnabled: false, maxColors: 0, minQty: 1,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 40, description: "Photo et quadri sur supports polyester : mugs, tapis de souris, plaques.",
+    formats: [fmt("s", "Face ≤ 9×8 cm", 9, 8), fmt("p", "Panoramique ≤ 20×8 cm", 20, 8)],
+    breaks: [1, 10, 25, 50, 100, 250],
+    prices: { s: [5, 3.2, 2.6, 2.1, 1.8, 1.5], p: [7, 4.5, 3.6, 3, 2.5, 2.1] },
+    extraColorPrices: [0, 0, 0, 0, 0, 0], options: [o("boite", "Boîte individuelle", "", "unit", 0.9)],
+  },
+  // --- Print (prix unitaires par exemplaire selon la quantité) ---
+  {
+    id: "flyers", universe: "print", name: "Flyers / tracts", color: "#f59e0b", colorsEnabled: false, maxColors: 0, minQty: 100,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 45, description: "Quadri, papier couché.",
+    formats: [fmt("a6", "A6 (10,5×14,8 cm)", 10.5, 14.8), fmt("a5", "A5 (14,8×21 cm)", 14.8, 21), fmt("dl", "DL (10×21 cm)", 10, 21), fmt("a4", "A4 (21×29,7 cm)", 21, 29.7)],
+    breaks: [100, 250, 500, 1000, 2500, 5000],
+    prices: { a6: [0.22, 0.11, 0.07, 0.045, 0.03, 0.022], a5: [0.32, 0.16, 0.1, 0.065, 0.042, 0.032], dl: [0.28, 0.14, 0.09, 0.058, 0.038, 0.028], a4: [0.55, 0.28, 0.18, 0.12, 0.08, 0.06] },
+    extraColorPrices: [0, 0, 0, 0, 0, 0],
+    options: [o("p135", "Papier 135 g", "Papier", "pct", 0), o("p170", "Papier 170 g", "Papier", "pct", 12), o("p350", "Papier 350 g (carton)", "Papier", "pct", 45),
+      o("rv", "Recto-verso", "Impression", "pct", 25), o("pellic", "Pelliculage mat", "Finition", "unit", 0.04), o("crea", "Création graphique", "", "fixed", 60)],
+  },
+  {
+    id: "cartes", universe: "print", name: "Cartes de visite", color: "#0ea5e9", colorsEnabled: false, maxColors: 0, minQty: 100,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 45, description: "Format 85×55 mm, quadri.",
+    formats: [fmt("std", "85×55 mm", 8.5, 5.5), fmt("carre", "Carrée 55×55 mm", 5.5, 5.5)],
+    breaks: [100, 250, 500, 1000, 2500],
+    prices: { std: [0.25, 0.12, 0.075, 0.05, 0.035], carre: [0.28, 0.14, 0.085, 0.056, 0.04] },
+    extraColorPrices: [0, 0, 0, 0, 0],
+    options: [o("p350", "Papier 350 g", "Papier", "pct", 0), o("p400", "Papier 400 g premium", "Papier", "pct", 20),
+      o("rv", "Recto-verso", "Impression", "pct", 20), o("soft", "Pelliculage soft-touch", "Finition", "pct", 35), o("crea", "Création graphique", "", "fixed", 45)],
+  },
+  {
+    id: "affiches", universe: "print", name: "Affiches", color: "#ef4444", colorsEnabled: false, maxColors: 0, minQty: 1,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 45, description: "Quadri, papier 135 g ou photo.",
+    formats: [fmt("a3", "A3 (29,7×42 cm)", 29.7, 42), fmt("a2", "A2 (42×59,4 cm)", 42, 59.4), fmt("a1", "A1 (59,4×84 cm)", 59.4, 84), fmt("a0", "A0 (84×119 cm)", 84, 119)],
+    breaks: [1, 10, 25, 50, 100, 250],
+    prices: { a3: [4, 1.6, 1, 0.75, 0.55, 0.42], a2: [9, 4, 2.6, 1.9, 1.4, 1.1], a1: [16, 8, 5.5, 4.2, 3.2, 2.6], a0: [28, 15, 10, 8, 6.2, 5] },
+    extraColorPrices: [0, 0, 0, 0, 0, 0],
+    options: [o("photo", "Papier photo satiné", "Papier", "pct", 35), o("dos", "Papier dos bleu (affichage)", "Papier", "pct", 10), o("crea", "Création graphique", "", "fixed", 60)],
+  },
+  {
+    id: "stickers", universe: "print", name: "Stickers / étiquettes", color: "#22c55e", colorsEnabled: false, maxColors: 0, minQty: 50,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 45, description: "Vinyle adhésif quadri.",
+    formats: [fmt("s", "≤ 5×5 cm", 5, 5), fmt("m", "≤ 10×10 cm", 10, 10), fmt("l", "≤ 20×20 cm", 20, 20)],
+    breaks: [50, 100, 250, 500, 1000, 2500],
+    prices: { s: [0.6, 0.38, 0.22, 0.15, 0.1, 0.07], m: [1.1, 0.7, 0.42, 0.3, 0.2, 0.15], l: [3, 2, 1.3, 0.95, 0.7, 0.55] },
+    extraColorPrices: [0, 0, 0, 0, 0, 0],
+    options: [o("forme", "Découpe à la forme", "", "pct", 20), o("ext", "Vinyle extérieur + lamination", "", "pct", 30), o("crea", "Création graphique", "", "fixed", 45)],
+  },
+  {
+    id: "rollup", universe: "print", name: "Roll-up / kakémono", color: "#6366f1", colorsEnabled: false, maxColors: 0, minQty: 1,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 50, description: "Structure + visuel, housse de transport incluse.",
+    formats: [fmt("85", "85×200 cm", 85, 200), fmt("100", "100×200 cm", 100, 200)],
+    breaks: [1, 2, 5, 10], prices: { 85: [79, 74, 68, 62], 100: [95, 89, 82, 75] }, extraColorPrices: [0, 0, 0, 0],
+    options: [o("prem", "Structure premium", "", "unit", 35), o("crea", "Création graphique", "", "fixed", 80)],
+  },
+  {
+    id: "bache", universe: "print", name: "Bâche / banderole", color: "#14b8a6", colorsEnabled: false, maxColors: 0, minQty: 1,
+    setupFee: 0, setupPerColor: 0, setupLabel: "Frais", costPct: 45, description: "PVC 510 g, ourlets et œillets.",
+    formats: [fmt("1x05", "100×50 cm", 100, 50), fmt("2x1", "200×100 cm", 200, 100), fmt("3x1", "300×100 cm", 300, 100), fmt("4x1", "400×100 cm", 400, 100)],
+    breaks: [1, 2, 5, 10, 25], prices: { "1x05": [25, 22, 19, 17, 15], "2x1": [55, 49, 43, 38, 34], "3x1": [79, 71, 62, 55, 49], "4x1": [99, 89, 78, 69, 62] },
+    extraColorPrices: [0, 0, 0, 0, 0],
+    options: [o("oeil", "Œillets tous les 50 cm", "", "unit", 6), o("micro", "Bâche micro-perforée (vent)", "", "pct", 20), o("crea", "Création graphique", "", "fixed", 60)],
+  },
+];
+
+const obj = (id, ref, name, category, cost, colors, coef = 1.8) =>
+  ({ id, universe: "objet", ref, name, brand: "", category, cost, coef, salePrice: null, colors, sizes: ["Unique"], sizeSurcharges: {}, image: "", notes: "" });
+export const SEED_OBJECTS = [
+  obj("o1", "MUG330", "Mug céramique blanc 330 ml", "Mug", 1.9, ["Blanc"], 2),
+  obj("o2", "STYLO-PL", "Stylo bille plastique", "Stylo", 0.25, ["Bleu", "Noir", "Rouge", "Blanc"], 2.2),
+  obj("o3", "STYLO-ME", "Stylo bille métal", "Stylo", 0.9, ["Argent", "Noir", "Bleu"], 2),
+  obj("o4", "GOURDE500", "Gourde inox 500 ml", "Gourde", 4.5, ["Inox", "Noir", "Blanc", "Bleu"], 1.8),
+  obj("o5", "PCLE-ME", "Porte-clés métal", "Porte-clés", 0.8, ["Argent"], 2.2),
+  obj("o6", "USB16", "Clé USB 16 Go", "High-tech", 3.2, ["Noir", "Blanc"], 1.8),
+  obj("o7", "CARNET-A5", "Carnet A5 couverture rigide", "Papeterie", 2.1, ["Noir", "Bleu", "Rouge"], 1.9),
+  obj("o8", "LANYARD", "Tour de cou 20 mm", "Accessoire", 0.6, ["Noir", "Bleu", "Rouge", "Vert"], 2.2),
+  obj("o9", "PARAPLUIE", "Parapluie golf", "Accessoire", 6.5, ["Noir", "Bleu marine", "Rouge"], 1.7),
+];

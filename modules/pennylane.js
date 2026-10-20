@@ -66,7 +66,7 @@ export function pennylaneRoutes(router, ctx) {
     if (kind === "acompte") return [line(`Acompte ${T.depositPct} % — devis ${q.number}${q.title ? ` (${q.title})` : ""}`, 1, depositHt, "forfait")];
     const lines = [];
     for (const l of c.lines) {
-      const marks = l.persos.map(p => `${p.techniqueName} ${p.position}`.trim()).join(", ");
+      const marks = l.persos.map(p => [l.kind === "print" ? p.formatLabel : `${p.techniqueName} ${p.position}`.trim(), ...(p.options || [])].filter(Boolean).join(" ")).join(", ");
       const sizes = l.sizeRows.map(r => `${r.size}×${r.qty}`).join(" ");
       lines.push(line(`${l.name}${l.color ? ` — ${l.color}` : ""}${marks ? ` — ${marks}` : ""}${sizes ? ` (${sizes})` : ""}`, l.qty || 1, l.qty ? l.total / l.qty : l.total));
     }

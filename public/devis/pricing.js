@@ -7,10 +7,15 @@
    ============================================================ */
 
 export const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+export const r4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
 const num = v => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
 
-export const fmtEUR = n =>
-  (Number(n) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+/** Montant en euros ; jusqu'à 4 décimales pour les petits prix unitaires (impression). */
+export const fmtEUR = n => {
+  const v = Number(n) || 0;
+  const precise = Math.abs(v) < 1 && Math.abs(v * 100 - Math.round(v * 100)) > 1e-6;
+  return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: precise ? 4 : 2 });
+};
 
 /** Index du palier de quantité applicable (dernier palier dont le minimum est atteint). */
 export function breakIndex(breaks, qty) {
@@ -47,6 +52,14 @@ export const persoGroupKey = (line, p) =>
     ? `${p.techniqueId}|${String(p.design).trim().toLowerCase()}`
     : `${line.id}|${p.id}`;
 
+/** Options choisies pour un marquage / imprimé (papier, recto-verso, finition…). */
+export function selectedOptions(tech, p) {
+  const ids = new Set(p?.options || []);
+  return (tech?.options || []).filter(o => ids.has(o.id));
+}
+
+export const UNIVERSES = { textile: "Textile", objet: "Objets", print: "Print" };
+
 /** Résout le format d'un marquage (manuel ou automatique à partir des dimensions). */
 export function resolveFormat(tech, p) {
   if (!tech) return { format: null, over: false, auto: false };
@@ -76,8 +89,11 @@ export function computeQuote(quote, techniques, settings) {
     const q = lineQty(line);
     for (const p of line.perso || []) {
       const key = persoGroupKey(line, p);
-      const g = (groups[key] ||= { key, qty: 0, colors: 1, techniqueId: p.techniqueId, design: p.design || "", positions: new Set(), setupOverride: null });
+      const g = (groups[key] ||= { key, qty: 0, colors: 1, techniqueId: p.techniqueId, design: p.design || "", positions: new Set(), setupOverride: null, fixed: 0, fixedLabels: new Set() });
       g.qty += q;
+      // options à montant fixe (ex. création graphique, structure de roll-up) : comptées une fois par visuel
+      const t = techById[p.techniqueId];
+      for (const o of selectedOptions(t, p).filter(o => o.type === "fixed")) { g.fixed += num(o.value) ?? 0; g.fixedLabels.add(o.label); }
       g.colors = Math.max(g.colors, parseInt(p.colors, 10) || 1);
       if (p.position) g.positions.add(p.position);
     }
@@ -123,7 +139,11 @@ export function computeQuote(quote, techniques, settings) {
       const colors = tech.colorsEnabled ? Math.max(1, parseInt(p.colors, 10) || 1) : 1;
       const base = format ? num(tech.prices?.[format.id]?.[bi]) ?? 0 : 0;
       const extra = tech.colorsEnabled ? (colors - 1) * (num(tech.extraColorPrices?.[bi]) ?? 0) : 0;
-      const computed = r2(base + extra);
+      const opts = selectedOptions(tech, p);
+      const pct = opts.filter(o => o.type === "pct").reduce((s, o) => s + (num(o.value) ?? 0), 0);
+      const unitAdd = opts.filter(o => o.type === "unit").reduce((s, o) => s + (num(o.value) ?? 0), 0);
+      // les imprimés ont des prix unitaires très bas (0,065 €) : 4 décimales pour ne pas fausser le total
+      const computed = (tech.universe === "print" ? r4 : r2)((base + extra) * (1 + pct / 100) + unitAdd);
       const unitOverride = num(p.unitOverride);
       const unit = unitOverride ?? computed;
       if (over) w.push(`Le visuel ${p.w}×${p.h} cm dépasse le plus grand format « ${format.label} »`);
@@ -134,21 +154,23 @@ export function computeQuote(quote, techniques, settings) {
         id: p.id, techniqueId: tech.id, techniqueName: tech.name, techniqueColor: tech.color,
         position: p.position || "", design: p.design || "", w: num(p.w), h: num(p.h), colors,
         colorsEnabled: !!tech.colorsEnabled, formatId: format?.id || "", formatLabel: format?.label || "—", auto, over,
+        universe: tech.universe || "textile", options: opts.map(o => o.label),
         breakQty: g.qty, breakMin: tech.breaks?.[bi] ?? 1, computed, unit, overridden: unitOverride !== null,
         total: r2(unit * qty), cost: r2(unit * qty * (num(tech.costPct) ?? 40) / 100), groupKey: key, warnings: w,
       };
     });
     persos.forEach(p => p.warnings?.forEach(x => warnings.push(`${line.name || "Article"} — ${x}`)));
 
-    const persoUnit = r2(persos.reduce((s, p) => s + p.unit, 0));
+    const ru = line.kind === "print" ? r4 : r2;
+    const persoUnit = ru(persos.reduce((s, p) => s + p.unit, 0));
     const persoTotal = r2(persos.reduce((s, p) => s + p.total, 0));
     const total = r2(textileTotal + persoTotal);
     if (!qty) warnings.push(`${line.name || "Article"} — aucune quantité saisie`);
     return {
       id: line.id, name: line.name || "", ref: line.ref || "", brand: line.brand || "", color: line.color || "",
-      image: line.image || "", note: line.note || "", supplied, qty, coef, discPct, sizeRows,
+      image: line.image || "", note: line.note || "", supplied, kind: line.kind || "article", universe: line.kind === "print" ? "print" : line.universe || "textile", qty, coef, discPct, sizeRows,
       textileUnit, textileTotal, textileCost, persos, persoUnit, persoTotal,
-      unit: qty ? r2(total / qty) : r2(textileUnit + persoUnit), total,
+      unit: qty ? ru(total / qty) : ru(textileUnit + persoUnit), total,
       cost: r2(textileCost + persos.reduce((s, p) => s + p.cost, 0)),
     };
   });
@@ -158,14 +180,14 @@ export function computeQuote(quote, techniques, settings) {
   for (const g of Object.values(groups)) {
     const tech = techById[g.techniqueId];
     if (!tech) continue;
-    const computed = r2((num(tech.setupFee) ?? 0) + (tech.colorsEnabled ? (num(tech.setupPerColor) ?? 0) * g.colors : 0));
+    const computed = r2((num(tech.setupFee) ?? 0) + (tech.colorsEnabled ? (num(tech.setupPerColor) ?? 0) * g.colors : 0) + g.fixed);
     const ov = num(quote.setupOverrides?.[g.key]);
     const amount = ov ?? computed;
     if (computed === 0 && ov === null) continue;
     const where = [...g.positions].join(", ");
     setups.push({
       key: g.key, techniqueId: tech.id, computed, amount, overridden: ov !== null,
-      label: `${tech.setupLabel || "Frais techniques"} ${tech.name}${g.design ? ` « ${g.design} »` : ""}${where ? ` — ${where}` : ""}${tech.colorsEnabled && num(tech.setupPerColor) ? ` (${g.colors} coul.)` : ""}`,
+      label: `${tech.setupLabel || "Frais techniques"} ${tech.name}${g.design ? ` « ${g.design} »` : ""}${where ? ` — ${where}` : ""}${tech.colorsEnabled && num(tech.setupPerColor) ? ` (${g.colors} coul.)` : ""}${g.fixedLabels.size ? ` + ${[...g.fixedLabels].join(", ")}` : ""}`,
       cost: r2(amount * (num(tech.costPct) ?? 40) / 100),
     });
   }
