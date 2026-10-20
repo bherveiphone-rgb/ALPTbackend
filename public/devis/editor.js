@@ -1,9 +1,11 @@
 /* Éditeur de devis : lignes, marquages, calcul en direct, BAT, échanges. */
-import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, ago, uid, num, clone, uploadFile, bindDrop, lightbox, pickFiles } from "./ui.js";
-import { computeQuote, lineQty, resolveFormat, QUOTE_STATUSES, BAT_STATUSES, batStatusOf } from "./pricing.js";
+import { S, api, isEmp, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, ago, uid, num, clone, uploadFile, bindDrop, lightbox, pickFiles } from "./ui.js";
+import { computeQuote, lineQty, resolveFormat, lineIncluded, QUOTE_STATUSES, BAT_STATUSES, batStatusOf } from "./pricing.js";
 import { reloadQuotes, clientModal, clientSnapshot, CLIENT_FIELDS, statusBadge, batBadge, newQuote } from "./app.js";
 import { emailComposer, taskModal, activityModal } from "./contacts.js";
 import { render as renderTpl } from "./tpl.js";
+import { saveAsTemplate } from "./achats.js";
+import { createShop } from "./boutiques.js";
 
 /** Variables des modèles d'emails pour ce devis (mêmes noms que côté serveur). */
 function tplVars(q, extra = {}) {
@@ -46,7 +48,7 @@ async function save(silent = false) {
     const saved = await api("PUT", `/quotes/${q.id}`, {
       title: q.title, clientId: q.clientId, client: q.client, lines: q.lines, fees: q.fees, discountPct: q.discountPct,
       shipping: q.shipping, vatRate: q.vatRate, depositPct: q.depositPct, validUntil: q.validUntil, leadTime: q.leadTime, deadline: q.deadline,
-      notes: q.notes, internalNotes: q.internalNotes, setupOverrides: q.setupOverrides, status: q.status,
+      notes: q.notes, internalNotes: q.internalNotes, setupOverrides: q.setupOverrides, status: q.status, choices: q.choices || {},
     });
     load(saved);
     setDirty(false);
@@ -56,7 +58,7 @@ async function save(silent = false) {
   } catch (e) { fail(e); return false; }
 }
 function load(q) {
-  E.q = q;
+  E.q = q; E.c = null;
   E.techniques = q.techniques || S.techniques;
   // une technique ajoutée depuis la création du devis reste disponible
   for (const t of S.techniques) if (!E.techniques.some(x => x.id === t.id)) E.techniques.push(t);
@@ -251,7 +253,7 @@ export function articlePicker(onPick, universe = "textile") {
       <td style="width:56px"><div class="thumb">${a.image ? `<img src="${h(a.image)}">` : icon(universe === "objet" ? "sparkle" : "shirt", "sm")}</div></td>
       <td><b>${h(a.name)}</b><br><small>${h([a.ref, a.brand, a.category].filter(Boolean).join(" · "))}</small></td>
       <td><small>${h((a.colors || []).slice(0, 4).join(", "))}${(a.colors || []).length > 4 ? "…" : ""}</small></td>
-      <td class="r num"><small class="muted">achat ${fmtEUR(a.cost)}</small></td></tr>`).join("")}</tbody></table>`
+      <td class="r num">${isEmp() ? "" : `<small class="muted">achat ${fmtEUR(a.cost)}</small>`}</td></tr>`).join("")}</tbody></table>`
       : `<div class="empty">Aucune référence trouvée. <a href="#/references">Gérer les références</a></div>`;
     $$("[data-a]", m.el).forEach(r => r.onclick = () => { m.close(); onPick(S.catalog.find(a => a.id === r.dataset.a)); });
   };
@@ -312,12 +314,22 @@ function drawLines() {
       <button class="btn sm ghost icon" data-act="del" title="Supprimer">${icon("trash", "sm")}</button>
     </div>
     <div class="line-b">
+      <div class="row" style="gap:8px;font-size:13px">
+        <select class="sm" data-mode style="width:170px" title="Une option ou une variante est proposée au client, qui choisit sur son espace">
+          <option value="normal" ${(l.mode || "normal") === "normal" ? "selected" : ""}>Ligne incluse</option>
+          <option value="option" ${l.mode === "option" ? "selected" : ""}>Option facultative</option>
+          <option value="variant" ${l.mode === "variant" ? "selected" : ""}>Variante (au choix)</option></select>
+        ${l.mode === "variant" ? `<input class="sm" data-group style="width:170px" value="${h(l.group || "")}" placeholder="Groupe (ex. Marquage dos)">` : ""}
+        ${l.mode === "option" ? `<label class="check"><input type="checkbox" data-incl ${q.choices?.options?.[l.id] ? "checked" : ""}> retenue (incluse dans le total)</label>` : ""}
+        ${l.mode === "variant" ? `<label class="check"><input type="radio" name="vg-${h(l.group || "")}" data-incl ${lineIncluded(q, l) ? "checked" : ""}> variante retenue</label>` : ""}
+        <span data-alt="${l.id}" class="muted"></span>
+      </div>
       <div><div class="section-lbl">${isPrint ? "Quantité (exemplaires)" : uni === "objet" ? "Quantité" : "Quantités par taille"} ${isPrint || uni === "objet" ? "" : `<button class="link-btn" data-act="addsize" style="font-size:11.5px;text-transform:none;letter-spacing:0">+ taille</button>`}</div>
-        <div class="sizes">${sizes.map(s => `<label class="size-cell"><span>${h(s)}</span><input type="number" min="0" inputmode="numeric" data-size="${h(s)}" value="${l.sizes?.[s] || ""}" placeholder="0">${num(l.sizeSurcharges?.[s]) ? `<small class="sur">+${fmtEUR(l.sizeSurcharges[s])}</small>` : ""}</label>`).join("")}</div>
+        <div class="sizes">${sizes.map(s => `<label class="size-cell"><span>${h(s)}</span><input type="number" min="0" inputmode="numeric" data-size="${h(s)}" value="${l.sizes?.[s] || ""}" placeholder="0">${!isEmp() && num(l.sizeSurcharges?.[s]) ? `<small class="sur">+${fmtEUR(l.sizeSurcharges[s])}</small>` : ""}</label>`).join("")}</div>
       </div>
       ${l.supplied ? "" : `<div><div class="section-lbl">${uni === "objet" ? "Objet" : "Textile"}</div><div class="textile-row">
-        <label class="f"><span>Prix d'achat HT</span><div class="input-group"><input type="number" class="sm" step="0.01" data-f="cost" value="${h(l.cost ?? "")}"><span class="addon">€</span></div></label>
-        <label class="f"><span>Coefficient</span><div class="input-group"><input type="number" class="sm" step="0.05" data-f="coef" value="${h(l.coef ?? "")}" placeholder="${h(S.settings.defaultCoef)}"><span class="addon">×</span></div></label>
+        ${isEmp() ? "" : `<label class="f"><span>Prix d'achat HT</span><div class="input-group"><input type="number" class="sm" step="0.01" data-f="cost" value="${h(l.cost ?? "")}"><span class="addon">€</span></div></label>
+        <label class="f"><span>Coefficient</span><div class="input-group"><input type="number" class="sm" step="0.05" data-f="coef" value="${h(l.coef ?? "")}" placeholder="${h(S.settings.defaultCoef)}"><span class="addon">×</span></div></label>`}
         <label class="f"><span>PU vente HT <small class="faint">(forcer)</small></span><div class="input-group"><input type="number" class="sm ${num(l.priceOverride) !== null ? "ov" : ""}" step="0.01" data-f="priceOverride" value="${h(l.priceOverride ?? "")}" data-tu="${l.id}"><span class="addon">€</span></div></label>
         <div class="f"><span style="display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Remise qté</span><div data-disc="${l.id}" style="height:30px;display:flex;align-items:center"></div></div>
       </div></div>`}
@@ -334,6 +346,16 @@ function drawLines() {
   // Évènements par ligne
   for (const el of $$("#lines .line")) {
     const l = q.lines.find(x => x.id === el.dataset.line);
+    $("[data-mode]", el).onchange = e => { l.mode = e.target.value; if (l.mode === "variant" && !l.group) l.group = "Variante"; setDirty(); drawLines(); recalc(); };
+    const grp = $("[data-group]", el);
+    if (grp) grp.onchange = () => { l.group = grp.value.trim(); setDirty(); drawLines(); recalc(); };
+    const incl = $("[data-incl]", el);
+    if (incl) incl.onchange = () => {
+      q.choices ||= {}; q.choices.options ||= {}; q.choices.variants ||= {};
+      if (l.mode === "option") q.choices.options[l.id] = incl.checked;
+      else q.choices.variants[l.group || ""] = l.id;
+      setDirty(); drawLines(); recalc();
+    };
     $$("[data-size]", el).forEach(i => i.oninput = () => {
       const v = Math.max(0, parseInt(i.value, 10) || 0);
       if (v) l.sizes[i.dataset.size] = v; else delete l.sizes[i.dataset.size];
@@ -488,12 +510,32 @@ function drawSetups(c) {
 
 /* -------- Recalcul en direct -------- */
 function recalc(redrawSetups = true) {
+  // Compte employé : les prix d'achat ne sont pas dans le navigateur, le serveur calcule
+  if (isEmp()) {
+    if (!E.c && E.q.computed) applyComputed(E.c = E.q.computed, redrawSetups);
+    clearTimeout(E.previewTimer);
+    const seq = E.previewSeq = (E.previewSeq || 0) + 1;
+    E.previewTimer = setTimeout(async () => {
+      try {
+        const c = await api("POST", "/quotes/preview", { quote: E.q });
+        if (seq === E.previewSeq && E.q) { E.c = c; applyComputed(c, redrawSetups); }
+      } catch (e) { fail(e); }
+    }, 200);
+    return;
+  }
+  applyComputed(E.c = computeQuote(E.q, E.techniques, S.settings), redrawSetups);
+}
+function applyComputed(c, redrawSetups = true) {
   const q = E.q;
-  const c = E.c = computeQuote(q, E.techniques, S.settings);
   const T = c.totals;
   $("#qtyTotal").textContent = `${T.qty} pièce${T.qty > 1 ? "s" : ""} au total`;
 
-  for (const l of c.lines) {
+  for (const a of c.alternatives || []) {
+    const el = $(`[data-alt="${a.id}"]`);
+    if (el) el.innerHTML = `Non incluse — <b>${a.deltaHt >= 0 ? "+" : ""}${fmtEUR(a.deltaHt)} HT</b> si le client la retient`;
+  }
+  for (const l of c.lines) { const el = $(`[data-alt="${l.id}"]`); if (el) el.textContent = l.mode !== "normal" ? "Incluse dans le total" : ""; }
+  for (const l of [...c.lines, ...(c.alternatives || []).map(a => a.line).filter(Boolean)]) {
     const src = q.lines.find(x => x.id === l.id);
     const tu = $(`[data-tu="${l.id}"]`);
     if (tu) tu.placeholder = l.textileUnit.toFixed(2);
@@ -516,7 +558,7 @@ function recalc(redrawSetups = true) {
       ${src?.supplied ? "" : `<span><span class="k">${l.universe === "objet" ? "Objet" : "Textile"}</span> <span class="num">${fmtEUR(l.textileUnit)}</span></span>`}
       ${l.persos.length ? `<span><span class="k">Marquage</span> <span class="num">${fmtEUR(l.persoUnit)}</span></span>` : ""}
       <span><span class="k">PU HT</span> <span class="v num">${fmtEUR(l.unit)}</span></span>
-      <span title="Marge sur la ligne (hors frais fixes)"><span class="k">Marge</span> <span class="num" style="color:${lm < 25 ? "var(--danger)" : "var(--success)"}">${lm} %</span></span>
+      ${isEmp() ? "" : `<span title="Marge sur la ligne (hors frais fixes)"><span class="k">Marge</span> <span class="num" style="color:${lm < 25 ? "var(--danger)" : "var(--success)"}">${lm} %</span></span>`}
       <span><span class="k">Total HT</span> <span class="v num" style="font-size:15px">${fmtEUR(l.total)}</span></span>`;
   }
   for (const f of c.fees) {
@@ -547,20 +589,24 @@ function drawSummary(c) {
     ${row("Total TTC", fmtEUR(T.ttc), "total")}
     ${T.deposit ? row(`Acompte ${T.depositPct} %`, fmtEUR(T.deposit), "sub") : ""}
     ${T.qty ? row("Prix moyen / pièce HT", fmtEUR(T.ht / T.qty), "sub") : ""}
-    <div class="margin-box">
+    ${isEmp() ? "" : `<div class="margin-box">
       <div class="row between"><b>${icon("lock", "sm")} Marge estimée</b><b class="num" style="color:${T.marginPct < 25 ? "var(--danger)" : "var(--success)"}">${fmtEUR(T.margin)} · ${T.marginPct} %</b></div>
       <div class="margin-bar"><i style="width:${mp}%"></i></div>
       <small class="muted">Coût de revient estimé ${fmtEUR(T.cost)} (textile + % de coût des techniques). Visible uniquement par vous.</small>
-    </div>
+    </div>`}
     ${c.warnings.length ? `<div class="warn-list">${c.warnings.map(w => `<div>⚠ ${h(w)}</div>`).join("")}</div>` : ""}
     ${q.production || q.payment?.status ? `<div class="row" style="margin-top:12px;gap:6px">${q.production ? `<a class="chip" href="#/production">${icon("brush", "sm")} ${h(S.settings.productionStages.find(s => s.key === q.production.stage)?.label || "")}</a><a class="chip" href="#/fiche/${q.id}">${icon("print", "sm")} Fiche de fabrication</a>` : ""}${q.payment?.status ? `<a class="chip ${q.payment.status === "paye" ? "green" : ""}" href="#/facturation">${icon("euro", "sm")} ${{ non_paye: "Non payé", acompte: "Acompte reçu", paye: "Payé" }[q.payment.status]}</a>` : ""}</div>` : ""}
     <div class="row" style="margin-top:14px">
       <button class="btn sm" id="dupQ">${icon("copy", "sm")} Dupliquer</button>
+      <button class="btn sm" id="tplQ" title="Réutiliser ce devis pour d'autres clients">${icon("save", "sm")} Modèle</button>
+      <button class="btn sm" id="shopQ" title="Page de commande pour les membres du club">${icon("card", "sm")} Boutique</button>
       <button class="btn sm" id="refreshQ" title="Réappliquer vos grilles tarifaires actuelles">${icon("refresh", "sm")} Actualiser tarifs</button>
       <button class="btn sm danger" id="delQ">${icon("trash", "sm")}</button>
     </div>
   </div>`;
   $("#status").onchange = e => { q.status = e.target.value; setDirty(); $("#hdrStatus").innerHTML = `${statusBadge(q.status)} ${batBadge(batStatusOf(q))}`; };
+  $("#shopQ").onclick = async () => { if (E.dirty && !(await save(true))) return; createShop(() => { location.hash = "#/boutiques"; }, E.q.id); };
+  $("#tplQ").onclick = async () => { if (E.dirty && !(await save(true))) return; saveAsTemplate(E.q); };
   $("#dupQ").onclick = async () => {
     if (E.dirty && !(await save(true))) return;
     try { const r = await api("POST", `/quotes/${q.id}/duplicate`); toast("Devis dupliqué"); location.hash = `#/devis/${r.id}`; } catch (e) { fail(e); }
@@ -640,11 +686,11 @@ function drawBatTab(body) {
   const bats = [...(q.bats || [])].reverse();
   const next = (q.bats || []).length + 1;
   const bs = batStatusOf(q);
-  body.innerHTML = `<div class="grid g2" style="grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start">
+  body.innerHTML = `<div class="grid g2 bat-grid">
   <div class="card"><div class="card-h"><h2>Préparer le BAT V${next}</h2>${bs === "modif" ? badge("Modification demandée", "danger") : ""}</div><div class="card-b stack">
     ${E.dirty ? `<div class="warn-list" style="margin:0">Enregistrez le devis avant d'envoyer le BAT.</div>` : ""}
     <div class="drop" id="drop">${icon("upload")}<div style="margin-top:6px"><b>Déposez vos fichiers de BAT</b> (images ou PDF)<br><small>ou cliquez pour parcourir</small></div></div>
-    <div class="row"><button class="btn" id="mockBtn">${icon("layers")} Créer une maquette (logo sur le textile)</button></div>
+    <div class="row"><button class="btn" id="mockBtn">${icon("layers")} Créer une maquette (logo sur le textile)</button><button class="btn" id="photoBtn">${icon("camera")} Prendre une photo</button></div>
     <div class="bat-files" id="staged"></div>
     <label class="f"><span>Caractéristiques techniques (rappel affiché au client)</span><textarea id="specs" rows="6">${h(autoSpecs())}</textarea></label>
     <label class="f"><span>Message au client</span><textarea id="batMsg" rows="3" placeholder="Ex. : Voici votre BAT, merci de vérifier attentivement l'orthographe et les couleurs."></textarea></label>
@@ -673,6 +719,12 @@ function drawBatTab(body) {
     }
   }, "image/*,application/pdf");
   $("#mockBtn").onclick = () => mockupTool(file => { E.staged.push(file); drawStaged(); });
+  // Photo d'un échantillon / premier tirage : appareil photo direct sur téléphone ou tablette
+  $("#photoBtn").onclick = async () => {
+    const [f] = await pickFiles({ accept: "image/*", multiple: false, capture: "environment" });
+    if (!f) return;
+    try { toast("Envoi de la photo…"); E.staged.push({ ...(await uploadFile(f)), name: `Photo ${new Date().toLocaleString("fr-FR")}` }); drawStaged(); } catch (e) { fail(e); }
+  };
   $("#sendBat").onclick = async () => {
     if (E.dirty && !(await save(true))) return;
     if (!E.staged.length) return fail("Ajoutez au moins un fichier ou une maquette.");

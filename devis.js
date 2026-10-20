@@ -15,10 +15,17 @@ import { crmRoutes } from "./modules/crm.js";
 import { workflowRoutes, startScheduler } from "./modules/workflow.js";
 import { pennylaneRoutes } from "./modules/pennylane.js";
 import { prospectionRoutes } from "./modules/prospection.js";
+import { qontoRoutes } from "./modules/qonto.js";
+import { purchasingRoutes } from "./modules/purchasing.js";
+import { shopRoutes } from "./modules/shops.js";
+import { setupAccounts, ROLES } from "./modules/accounts.js";
+import { atelierRoutes } from "./modules/atelier.js";
+import { insightsRoutes } from "./modules/insights.js";
 
 const SEEDS = {
   settings: SEED_SETTINGS, techniques: SEED_TECHNIQUES, catalog: SEED_CATALOG, clients: [], quotes: [],
   activities: [], tasks: [], requests: [], prospects: [], sequences: SEED_SEQUENCES, optout: [], mailstate: {}, inbox: [], autolog: [], prospstate: {},
+  quoteTemplates: [], bankmatches: [], bankstate: {}, stock: [], stockmoves: [], shops: [], shopOrders: [], users: [], sessions: [], backupstate: {},
 };
 
 export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }) {
@@ -34,11 +41,13 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   const ctx = createCore({ db, mail, adminPassword });
   ctx.uploadsDir = uploadsDir;
   ctx.stripe = stripe;
+  const accountRoutes = setupAccounts(ctx, adminPassword);
   const { requireAdmin, wrap, logQuote: log } = ctx;
 
   const router = express.Router();
   router.use(express.json({ limit: "40mb" }));
   router.use(ctx.trackOrigin);
+  accountRoutes(router);
 
   /* -------- Calcul : les techniques figées dans le devis priment -------- */
   const techsFor = q => {
@@ -47,6 +56,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     const ids = new Set([...global.map(t => t.id), ...Object.keys(snap)]);
     return [...ids].map(id => snap[id] || global.find(t => t.id === id)).filter(Boolean);
   };
+  ctx.techsFor = techsFor;
   function recompute(q, settings = db.get("settings")) {
     const global = db.get("techniques");
     q.techSnapshot ||= {};
@@ -90,13 +100,15 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     ...s,
     mail: { ...s.mail, smtp: { ...s.mail.smtp, pass: "" }, imap: { ...s.mail.imap, pass: "" }, hasSmtpPass: !!s.mail.smtp?.pass, hasImapPass: !!s.mail.imap?.pass },
     pennylane: { ...s.pennylane, apiKey: "", hasKey: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY) },
+    qonto: { ...s.qonto, secretKey: "", hasKey: !!(s.qonto.secretKey || process.env.QONTO_SECRET_KEY) },
   });
-  router.get("/bootstrap", requireAdmin, (_req, res) => {
+  router.get("/bootstrap", requireAdmin, (req, res) => {
     const s = db.get("settings");
     res.json({
+      user: req.user, roles: ROLES,
       settings: publicSettings(s), techniques: db.get("techniques"), catalog: db.get("catalog"), clients: db.get("clients"),
       mailEnabled: mail.configured(), imapEnabled: mail.imapConfigured(), mailPresets: MAIL_PRESETS, mailState: db.get("mailstate"),
-      stripeEnabled: !!process.env.STRIPE_SECRET_KEY, pennylaneEnabled: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY),
+      stripeEnabled: !!process.env.STRIPE_SECRET_KEY, qontoEnabled: !!(s.qonto.login || process.env.QONTO_LOGIN) && !!(s.qonto.secretKey || process.env.QONTO_SECRET_KEY), pennylaneEnabled: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY),
     });
   });
 
@@ -113,6 +125,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
       };
       delete next.mail.hasSmtpPass; delete next.mail.hasImapPass;
     }
+    if (b.qonto) { next.qonto = { ...cur.qonto, ...b.qonto, secretKey: b.qonto.secretKey || cur.qonto.secretKey || "" }; delete next.qonto.hasKey; }
     if (b.pennylane) { next.pennylane = { ...cur.pennylane, ...b.pennylane, apiKey: b.pennylane.apiKey || cur.pennylane.apiKey || "" }; delete next.pennylane.hasKey; }
     db.set("settings", next);
     res.json(publicSettings(mergeSettings(next)));
@@ -172,7 +185,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   }));
 
   const EDITABLE = ["title", "clientId", "client", "lines", "fees", "discountPct", "shipping", "vatRate", "depositPct",
-    "validUntil", "leadTime", "notes", "internalNotes", "setupOverrides", "status", "deadline", "requestId", "files", "lostReason"];
+    "validUntil", "leadTime", "notes", "internalNotes", "setupOverrides", "status", "deadline", "requestId", "files", "lostReason", "choices"];
   const pick = body => Object.fromEntries(EDITABLE.filter(k => k in body).map(k => [k, body[k]]));
 
   const nextNumber = settings => `${settings.quotePrefix || "DEV"}-${new Date().getFullYear()}-${String(settings.nextNumber || 1).padStart(4, "0")}`;
@@ -195,12 +208,20 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     return q;
   };
 
-  router.post("/quotes", requireAdmin, (req, res) => res.json(withLink(ctx.createQuote(req.body || {}), req)));
+  router.post("/quotes", requireAdmin, (req, res) => {
+    const b = req.body || {};
+    if (ctx.isEmployee(req) && Array.isArray(b.lines)) {
+      const tpl = db.get("quoteTemplates").find(t => t.id === b.templateId);
+      ctx.restoreCosts(b.lines, tpl ? tpl.lines.map((l, i) => ({ ...l, id: b.lines[i]?.id })) : []);
+    }
+    res.json(withLink(ctx.createQuote(b), req));
+  });
 
   router.put("/quotes/:id", requireAdmin, wrap((req, res) => {
     const quotes = db.get("quotes");
     const q = findQuote(quotes, req.params.id);
     const patch = pick(req.body);
+    if (patch.lines && ctx.isEmployee(req)) ctx.restoreCosts(patch.lines, q.lines);
     if (patch.status && patch.status !== q.status) {
       if (!QUOTE_STATUSES[patch.status]) return res.status(400).json({ error: "Statut invalide" });
       log(q, "status", `Statut changé : ${QUOTE_STATUSES[q.status]?.label} → ${QUOTE_STATUSES[patch.status].label}`);
@@ -339,18 +360,18 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     res.json(summary(q));
   }));
 
+  ctx.backupData = () => ({ ...Object.fromEntries(db.names().filter(n => !["mailstate", "sessions", "backupstate"].includes(n)).map(n => [n, db.get(n)])), settings: publicSettings(db.get("settings")), exportedAt: new Date().toISOString() });
   router.get("/backup", requireAdmin, (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="sauvegarde-devis-${new Date().toISOString().slice(0, 10)}.json"`);
-    const s = db.get("settings");
-    res.json({ ...Object.fromEntries(db.names().filter(n => n !== "mailstate").map(n => [n, db.get(n)])), settings: publicSettings(s) });
+    res.json(ctx.backupData());
   });
   router.post("/restore", requireAdmin, (req, res) => {
     const b = req.body || {};
     for (const n of db.names()) {
-      if (!(n in b) || n === "mailstate") continue;
+      if (!(n in b) || ["mailstate", "sessions", "backupstate"].includes(n)) continue;
       if (n === "settings" && typeof b[n] === "object") {
         const cur = db.get("settings");
-        db.set(n, { ...b[n], mail: cur.mail, pennylane: cur.pennylane }); // les secrets ne sont pas dans la sauvegarde
+        db.set(n, { ...b[n], mail: cur.mail, pennylane: cur.pennylane, qonto: cur.qonto }); // les secrets ne sont pas dans la sauvegarde
       } else if (Array.isArray(b[n])) db.set(n, b[n]);
     }
     res.json({ ok: true });
@@ -387,6 +408,12 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
         persos: l.persos.map(x => ({ technique: x.techniqueName, position: x.position, format: x.formatLabel, w: x.w, h: x.h, colors: x.colorsEnabled ? x.colors : null, design: x.design, options: x.options || [], universe: x.universe })),
       })),
       setups: c.setups.map(s => ({ label: s.label, amount: s.amount })),
+      // options / variantes : le client peut choisir tant que le devis n'est pas accepté
+      choosable: ["brouillon", "envoye"].includes(q.status),
+      choices: (c.lines.filter(l => l.mode !== "normal").map(l => ({ id: l.id, mode: l.mode, group: l.group, included: true, name: l.name, total: l.total, deltaHt: 0 })))
+        .concat((c.alternatives || []).map(a => ({ id: a.id, mode: a.mode, group: a.group, included: false, name: a.line?.name || "", total: a.line?.total || 0, deltaHt: a.deltaHt, deltaTtc: a.deltaTtc,
+          line: a.line ? { name: a.line.name, color: a.line.color, image: a.line.image, qty: a.line.qty, unit: a.line.unit, note: a.line.note, kind: a.line.kind,
+            persos: a.line.persos.map(x => ({ technique: x.techniqueName, position: x.position, format: x.formatLabel, w: x.w, h: x.h, colors: x.colorsEnabled ? x.colors : null, options: x.options || [] })) } : null }))),
       fees: c.fees, totals,
       acceptance: q.acceptance ? { name: q.acceptance.name, at: q.acceptance.at, signature: q.acceptance.signature } : null,
       decline: q.decline || null,
@@ -520,6 +547,22 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     res.json(publicView(q, req));
   }));
 
+  // Le client coche une option ou choisit une variante : le total est recalculé
+  router.post("/public/quote/:token/choices", wrap((req, res) => {
+    const { quotes, q } = findByToken(req.params.token);
+    if (!q) return res.status(404).json({ error: "Lien invalide" });
+    if (!["brouillon", "envoye"].includes(q.status)) return res.status(400).json({ error: "Ce devis est déjà validé : contactez-nous pour le modifier." });
+    const ids = new Set((q.lines || []).map(l => l.id));
+    const opts = Object.fromEntries(Object.entries(req.body?.options || {}).filter(([id]) => ids.has(id) && q.lines.find(l => l.id === id)?.mode === "option").map(([id, v]) => [id, !!v]));
+    const vars = Object.fromEntries(Object.entries(req.body?.variants || {}).filter(([g, id]) => q.lines.some(l => l.id === id && l.mode === "variant" && (l.group || "") === g)));
+    q.choices = { options: { ...(q.choices?.options || {}), ...opts }, variants: { ...(q.choices?.variants || {}), ...vars } };
+    recompute(q);
+    q.updatedAt = Date.now(); q.attention = true;
+    log(q, "choice", `Le client a ajusté ses options — nouveau total ${fmtEUR(q.computed.totals.ht)} HT`);
+    db.set("quotes", quotes);
+    res.json(publicView(q, req));
+  }));
+
   router.post("/public/quote/:token/review", wrap(async (req, res) => {
     const { quotes, q } = findByToken(req.params.token);
     if (!q) return res.status(404).json({ error: "Lien invalide" });
@@ -581,6 +624,11 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   workflowRoutes(router, ctx);
   pennylaneRoutes(router, ctx);
   prospectionRoutes(router, ctx);
+  qontoRoutes(router, ctx);
+  purchasingRoutes(router, ctx);
+  shopRoutes(router, ctx);
+  atelierRoutes(router, ctx);
+  insightsRoutes(router, ctx, { dataDir, uploadsDir });
   startScheduler(ctx);
 
   return router;

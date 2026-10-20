@@ -128,6 +128,7 @@ export async function renderContact(main, id) {
     <button class="btn" id="mail">${icon("send")} Email</button>
     <button class="btn" id="log">${icon("note")} Noter un échange</button>
     <button class="btn" id="task">${icon("check")} Tâche</button>
+    ${d.quotes.some(q => SIGNED.includes(q.status)) ? `<button class="btn" id="renew" title="Dupliquer la dernière commande pour la nouvelle saison">${icon("refresh")} Reconduire</button>` : ""}
     <button class="btn primary" id="nq">${icon("plus")} Nouveau devis</button>
   </div>
   <div class="profile">
@@ -191,6 +192,15 @@ export async function renderContact(main, id) {
   bindTaskRows($("#ctasks"), reload);
   $("#edit").onclick = () => clientModal(c, reload);
   $("#nq").onclick = () => newQuote({ clientId: c.id, client: clientSnapshot(c), discountPct: c.discountPct || 0 });
+  if ($("#renew")) $("#renew").onclick = async () => {
+    const last = d.quotes.filter(q => SIGNED.includes(q.status)).sort((a, b) => (b.acceptedAt || b.createdAt) - (a.acceptedAt || a.createdAt))[0];
+    if (!(await confirmBox("Reconduire la dernière commande ?", `Un nouveau devis est créé à partir de ${h(last.number)} (mêmes articles et marquages, prix actualisés à vérifier).`, { label: "Créer le devis" }))) return;
+    try {
+      const r = await api("POST", `/quotes/${last.id}/duplicate`);
+      await api("POST", `/quotes/${r.id}/refresh-pricing`);
+      toast("Devis reconduit — vérifiez quantités et prix"); location.hash = `#/devis/${r.id}`;
+    } catch (e) { fail(e); }
+  };
   $("#mail").onclick = () => emailComposer({ to: c.email, name: c.contact, ...refs }, reload);
   $("#log").onclick = () => activityModal("call", refs, reload);
   $("#task").onclick = $("#task2").onclick = () => taskModal({ ...refs, label: c.company || c.contact }, reload);

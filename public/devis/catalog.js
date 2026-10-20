@@ -3,6 +3,7 @@ import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, 
 import { breakTable, UNIVERSES } from "./pricing.js";
 import { newQuote } from "./app.js";
 import { lineFromArticle, articlePicker } from "./editor.js";
+import { supplierPricesModal } from "./achats.js";
 
 const salePrice = a => a.salePrice ?? r2(a.cost * (a.coef ?? S.settings.defaultCoef));
 const list = s => String(s || "").split(/[|,;/]/).map(x => x.trim()).filter(Boolean);
@@ -17,6 +18,7 @@ export function renderCatalog(main) {
   const cats = [...new Set(S.catalog.filter(a => uniOf(a) === refUni).map(a => a.category).filter(Boolean))].sort();
   main.innerHTML = `<div class="page-head"><div class="grow"><h1>Références</h1><p>${S.catalog.length} articles · prix de vente = prix d'achat × coefficient (${S.settings.defaultCoef} par défaut)</p></div>
     <button class="btn" id="exp">${icon("download")} Exporter</button>
+    <button class="btn" id="prices">${icon("trend")} Tarif fournisseur</button>
     <button class="btn" id="imp">${icon("upload")} Importer (CSV / Excel)</button>
     <button class="btn primary" id="add">${icon("plus")} Nouvelle référence</button></div>
   <div class="seg" id="ru" style="margin-bottom:16px">${[["textile", "Textile"], ["objet", "Objets personnalisés"]].map(([k, l]) => `<button data-u="${k}" class="${refUni === k ? "on" : ""}">${l} (${S.catalog.filter(a => uniOf(a) === k).length})</button>`).join("")}</div>
@@ -73,6 +75,7 @@ export function renderCatalog(main) {
   };
   $("#rs").oninput = draw; $("#rc").onchange = draw;
   $("#add").onclick = () => articleModal(null, () => renderCatalog(main));
+  $("#prices").onclick = () => supplierPricesModal(() => renderCatalog(main));
   $$("#ru button").forEach(b => b.onclick = () => { refUni = b.dataset.u; sel.clear(); renderCatalog(main); });
   $("#imp").onclick = () => importModal(() => renderCatalog(main));
   $("#exp").onclick = () => download(`references-${new Date().toISOString().slice(0, 10)}.csv`, toCSV([

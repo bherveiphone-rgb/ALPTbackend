@@ -3,6 +3,7 @@ export { fmtEUR, r2 } from "./pricing.js";
 
 export const S = {
   pw: sessionStorage.getItem("devis_pw") || "",
+  tok: localStorage.getItem("devis_tok") || "",
   settings: null, techniques: [], catalog: [], clients: [], quotes: [],
   mailEnabled: false, stripeEnabled: false,
 };
@@ -32,11 +33,11 @@ export const ago = t => {
 /* ---------- API ---------- */
 export async function api(method, url, body) {
   const res = await fetch("/api/devis" + url, {
-    method, headers: { "Content-Type": "application/json", "x-admin-password": S.pw },
+    method, headers: { "Content-Type": "application/json", ...(S.tok ? { "x-auth-token": S.tok } : { "x-admin-password": S.pw }) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) {
-    sessionStorage.removeItem("devis_pw");
+    sessionStorage.removeItem("devis_pw"); localStorage.removeItem("devis_tok");
     location.reload();
     throw new Error("Session expirée");
   }
@@ -44,6 +45,9 @@ export async function api(method, url, body) {
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
   return data;
 }
+
+/** Vrai pour un compte employé (prix d'achat et marges masqués). */
+export const isEmp = () => S.user && S.user.role !== "admin";
 
 /* ---------- Icônes (traits SVG) ---------- */
 const P = {
@@ -55,6 +59,10 @@ const P = {
   calc: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 6-6"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
@@ -162,10 +170,11 @@ export async function uploadFile(file) {
   return api("POST", "/upload", { dataUrl, name: file.name });
 }
 
-export function pickFiles({ accept = "image/*,application/pdf", multiple = true } = {}) {
+export function pickFiles({ accept = "image/*,application/pdf", multiple = true, capture = "" } = {}) {
   return new Promise(res => {
     const i = document.createElement("input");
     i.type = "file"; i.accept = accept; i.multiple = multiple;
+    if (capture) i.setAttribute("capture", capture); // ouvre directement l'appareil photo sur mobile
     i.onchange = () => res([...i.files]);
     i.click();
   });

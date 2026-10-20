@@ -41,10 +41,21 @@ INSTALLER LE LOGICIEL ATELIER SUR WINDOWS
       - Double-cliquez sur  Configurer-adresse-fixe.bat  et suivez les questions
       - Relancez Demarrer-Atelier.bat : le tunnel demarre automatiquement ensuite.
 
-5. SAUVEGARDER (une fois par semaine)
-   - Double-cliquez sur  Sauvegarder.bat
-   - Un fichier ZIP est cree dans Documents\Sauvegardes-Atelier
-   - Copiez-le sur une cle USB, Google Drive ou OneDrive.
+5. SAUVEGARDER
+   - Automatique : chaque jour, le logiciel fait une sauvegarde dans data\backups.
+     Dans Parametres > Sauvegarde, indiquez un dossier OneDrive ou Google Drive
+     (ex. C:\Users\vous\OneDrive\Sauvegardes atelier) : une copie y part chaque jour,
+     avec les visuels et BAT.
+   - Manuel (une fois par mois par exemple) : double-cliquez sur  Sauvegarder.bat
+     Un fichier ZIP est cree dans Documents\Sauvegardes-Atelier.
+
+   COMPTES DES COLLABORATEURS
+   - Parametres > Utilisateurs > Ajouter : nom, email, mot de passe, role.
+   - Un "Employe" ne voit ni les prix d'achat ni les marges.
+
+   SUR LE TELEPHONE
+   - Ouvrez l'adresse https du point 4 sur le telephone, connectez-vous, puis
+     Android : menu > "Installer l'application" ; iPhone : Partager > "Sur l'ecran d'accueil".
 
 6. METTRE A JOUR LE LOGICIEL
    - Telechargez le nouveau ZIP, extrayez-le, et copiez par-dessus l'ancien

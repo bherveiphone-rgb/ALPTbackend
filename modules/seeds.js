@@ -120,6 +120,8 @@ export const DEFAULT_TEMPLATES = {
     body: "Bonjour {{contact}},\n\nVotre commande {{numero}} vient d'être expédiée ({{transporteur}}).\nNuméro de suivi : {{suivi}}\n{{lien_suivi}}\n\nSuivi de commande : {{lien}}\n\n{{signature}}" },
   ready_pickup: { label: "Commande prête (retrait)", subject: "Votre commande {{numero}} est prête !",
     body: "Bonjour {{contact}},\n\nVotre commande {{numero}} est prête et vous attend à l'atelier.\n\n{{signature}}" },
+  season_reminder: { label: "Relance avant la saison", subject: "On prépare la nouvelle saison ? — {{client}}",
+    body: "Bonjour {{contact}},\n\nL'an dernier, nous avions réalisé votre commande {{numero}} ({{objet}}). La nouvelle saison approche : souhaitez-vous la reconduire, compléter les tailles ou ajouter de nouveaux articles ?\n\nIl suffit de répondre à cet email (nous vous renvoyons le même devis actualisé) ou de faire votre demande ici :\n{{lien_demande}}\n\n{{signature}}" },
   review_request: { label: "Demande d'avis après livraison", subject: "Votre avis compte — commande {{numero}}",
     body: "Bonjour {{contact}},\n\nVous avez reçu votre commande {{numero}} : tout est conforme ? Votre retour nous aide beaucoup (30 secondes) :\n{{lien}}\n\nEt pour vos prochains besoins (nouveaux membres, événements…), nous sommes là !\n\n{{signature}}" },
 };
@@ -136,6 +138,8 @@ export const DEFAULT_AUTOMATION = {
   autoStatusEmails: true,        // BAT, production lancée, expédition, prêt au retrait
   reviewAfterDays: 3, autoSendReview: true,
   reactivationMonths: 10,        // tâche « recontacter » un client sans commande depuis N mois
+  seasonWeeks: 46,               // relance « nouvelle saison » N semaines après la dernière commande
+  autoSendSeason: false,
   inboundToRequest: false,       // emails d'inconnus contenant « devis » → nouvelle demande
 };
 
@@ -167,6 +171,17 @@ export function mergeSettings(v) {
   s.productionStages = PRODUCTION_STAGES.map(st => ({ ...st, label: v.productionStages?.find(x => x.key === st.key)?.label || st.label }));
   s.mail = { smtp: {}, imap: {}, ...(v.mail || {}) };
   s.pennylane = { apiKey: "", draft: true, ...(v.pennylane || {}) };
+  s.qonto = { login: "", secretKey: "", ...(v.qonto || {}) };
+  s.suppliers = Array.isArray(v.suppliers) ? v.suppliers : [];
+  s.machines = Array.isArray(v.machines) ? v.machines : [
+    { id: "carrousel", name: "Carrousel sérigraphie", capacity: 400, techniques: ["serigraphie"] },
+    { id: "brodeuse", name: "Brodeuse", capacity: 80, techniques: ["broderie"] },
+    { id: "presse", name: "Presse à chaud (DTF / flex)", capacity: 150, techniques: ["dtf", "flocage", "sublim"] },
+    { id: "objets", name: "Poste objets (tampo / laser / UV)", capacity: 300, techniques: ["tampo", "laser", "uv"] },
+  ];
+  s.planningLeadDays ??= 3;
+  s.planningWeekends ??= false;
+  s.backup = { dir: "", keep: 30, ...(v.backup || {}) };
   s.tags = Array.isArray(v.tags) ? v.tags : ["Club", "Association", "Entreprise", "École", "Collectivité", "Événement", "VIP"];
   s.lostReasons = Array.isArray(v.lostReasons) ? v.lostReasons : ["Prix trop élevé", "Délai trop long", "Concurrent", "Projet abandonné", "Pas de réponse"];
   return s;

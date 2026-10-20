@@ -1,9 +1,9 @@
 /* Paramètres : entreprise, calcul, emails (connexion + modèles), automatisations, formulaire, intégrations, sauvegarde. */
-import { S, api, h, $, $$, icon, badge, toast, fail, confirmBox, num, uid, uploadFile, pickFiles, readAsText, download } from "./ui.js";
+import { S, api, h, $, $$, icon, badge, toast, fail, confirmBox, modal, fmtDate, num, uid, uploadFile, pickFiles, readAsText, download } from "./ui.js";
 import { reloadBootstrap } from "./app.js";
 
 const TABS = [["entreprise", "users", "Entreprise"], ["calcul", "calc", "Devis & calcul"], ["emails", "send", "Boîte mail"], ["modeles", "msg", "Modèles d'emails"],
-  ["automatisations", "sparkle", "Automatisations"], ["formulaire", "link", "Formulaire & portail"], ["prospection", "trend", "Prospection"], ["integrations", "euro", "Pennylane"], ["sauvegarde", "download", "Sauvegarde"]];
+  ["automatisations", "sparkle", "Automatisations"], ["formulaire", "link", "Formulaire & portail"], ["prospection", "trend", "Prospection"], ["integrations", "euro", "Pennylane & Qonto"], ["utilisateurs", "lock", "Utilisateurs"], ["sauvegarde", "download", "Sauvegarde"]];
 
 export function renderSettings(main) {
   const tab = location.hash.split("/")[2] || "entreprise";
@@ -14,7 +14,7 @@ export function renderSettings(main) {
     <div id="sb"></div>`;
   $$(".settings-tabs button").forEach(b => b.onclick = () => { location.hash = `#/parametres/${b.dataset.t}`; });
   const body = $("#sb");
-  const draw = { entreprise, calcul, emails, modeles, automatisations, formulaire, prospection, integrations, sauvegarde }[tab] || entreprise;
+  const draw = { entreprise, calcul, emails, modeles, automatisations, formulaire, prospection, integrations, utilisateurs, sauvegarde }[tab] || entreprise;
   let collect = () => {};
   /** Enregistre ; `rerender=false` garde la page affichée (boutons « tester »). Lève en cas d'erreur. */
   const save = async (rerender = true) => {
@@ -175,6 +175,7 @@ function automatisations(body, st) {
     ${row("Relance des devis sans réponse", "Après l'envoi, si le client n'a ni accepté ni refusé. Sinon une tâche « Relancer » vous est proposée.", `<span>Après</span><input type="text" class="sm" style="width:90px" data-k="automation.quoteReminderDays" data-nums="1" value="${h((A.quoteReminderDays || []).join(", "))}"><span>jours</span>${chk("automation.autoSendQuoteReminders", "envoyer l'email automatiquement", A.autoSendQuoteReminders)}`)}
     ${row("Devis bientôt expiré", "Crée une tâche quelques jours avant la fin de validité.", `<span>Prévenir</span>${n("expiringDays", A.expiringDays)}<span>jours avant</span>`)}
     ${row("Demande non traitée", "Délai pour répondre à une nouvelle demande (échéance de la tâche).", n("requestResponseHours", A.requestResponseHours) + "<span>heures</span>")}
+    ${row("Relance « nouvelle saison »", "Environ un an après la dernière commande d'un client : proposer de la reconduire (email « Relance avant la saison » ou tâche).", `<span>Après</span>${n("seasonWeeks", A.seasonWeeks)}<span>semaines</span>${chk("automation.autoSendSeason", "envoyer l'email automatiquement", A.autoSendSeason)}`)}
     ${row("Clients à recontacter", "Tâche si un client n'a rien commandé depuis… (renouvellement de saison).", n("reactivationMonths", A.reactivationMonths) + "<span>mois</span>")}
     ${row("Emails d'inconnus", "Créer automatiquement une demande quand un inconnu écrit au sujet d'un devis, d'un prix…", chk("automation.inboundToRequest", "activer", A.inboundToRequest))}
   </div></div>
@@ -230,17 +231,89 @@ function integrations(body, st, save) {
     <div style="margin-top:10px">${chk("pennylane.draft", "Créer les factures en <b>brouillon</b> (recommandé : vous les vérifiez puis les finalisez dans Pennylane)", pl.draft !== false)}</div>
     <div class="row" style="margin-top:12px"><button class="btn" id="plTest">${icon("refresh", "sm")} Enregistrer et tester</button><span id="plRes"></span></div>`)}
     ${card("Obtenir la clé", `<ol style="margin:0;padding-left:18px;line-height:1.7"><li>Dans Pennylane : <b>Paramètres › Connectivité › Développeurs</b>.</li><li>Créez un jeton d'API (API v2) avec les droits <b>Factures clients</b> et <b>Clients</b> en lecture/écriture.</li><li>Collez-le ici et testez.</li></ol>
-      <p class="hint">Le jeton est stocké sur votre serveur et n'est jamais renvoyé au navigateur. Vous pouvez aussi le définir via PENNYLANE_API_KEY dans le fichier .env.</p>`)}</div>`;
+      <p class="hint">Le jeton est stocké sur votre serveur et n'est jamais renvoyé au navigateur. Vous pouvez aussi le définir via PENNYLANE_API_KEY dans le fichier .env.</p>`)}
+    ${card("Qonto (banque)", `
+      <p style="margin-top:0">Les <b>virements reçus</b> sont relevés toutes les 15 minutes et rapprochés de vos devis : par la référence (ex. DEV-2026-0012, indiquée au client sur son devis), sinon par le montant et le nom. Connexion en <b>lecture seule</b> : aucun paiement ne peut être émis.</p>
+      <div class="grid g2">${f("qonto.login", "Identifiant", st.qonto?.login, "text", 'placeholder="mon-atelier-1234" autocomplete="off"')}
+      <label class="f"><span>Clé secrète ${st.qonto?.hasKey ? badge("enregistrée", "success", true) : ""}</span><input type="password" data-k="qonto.secretKey" value="" placeholder="${st.qonto?.hasKey ? "•••••••• (inchangée)" : "Clé secrète"}" autocomplete="new-password"></label></div>
+      <div class="row" style="margin-top:12px"><button class="btn" id="qtTest">${icon("refresh", "sm")} Enregistrer et tester</button><span id="qtRes"></span></div>`)}
+    ${card("Obtenir la clé Qonto", `<ol style="margin:0;padding-left:18px;line-height:1.7"><li>Dans l'application Qonto (titulaire ou admin) : <b>Paramètres › Intégrations et partenariats › Clé API</b>.</li><li>Copiez l'<b>identifiant</b> et la <b>clé secrète</b>.</li><li>Collez-les ici et testez.</li></ol>`)}</div>`;
+  $("#qtTest").onclick = async () => {
+    try { await save(false); const r = await api("POST", "/qonto/test"); $("#qtRes").innerHTML = `✅ ${h(r.name)} — ${r.accounts.length} compte(s)`; }
+    catch (e) { $("#qtRes").innerHTML = `<span style="color:var(--danger)">❌ ${h(e.message)}</span>`; }
+  };
   $("#plTest").onclick = async () => {
     try { await save(false); const r = await api("POST", "/pennylane/test"); $("#plRes").innerHTML = `✅ Connecté${r.company ? ` à ${h(r.company)}` : ""}`; }
     catch (e) { $("#plRes").innerHTML = `<span style="color:var(--danger)">❌ ${h(e.message)}</span>`; }
   };
 }
 
+async function autoBackup(box) {
+  let st = {};
+  try { st = await api("GET", "/backup-status"); } catch (e) { return fail(e); }
+  const b = S.settings.backup || {}, last = st.last;
+  box.innerHTML = card("Sauvegarde automatique", `<p style="margin-top:0">Chaque jour, toutes les données sont copiées dans <code>${h(st.localDir)}</code>. Indiquez aussi un dossier synchronisé (OneDrive, Google Drive pour ordinateur, Dropbox, clé USB, NAS…) pour garder une copie hors de l'ordinateur : les visuels et BAT y sont copiés aussi (dossier « fichiers »).</p>
+    <div class="grid g2"><label class="f"><span>Dossier de copie (chemin complet)</span><input type="text" id="bdir" value="${h(b.dir)}" placeholder="C:\\Users\\vous\\OneDrive\\Sauvegardes atelier"></label>
+      <label class="f"><span>Nombre de sauvegardes conservées</span><input type="number" min="1" max="365" id="bkeep" value="${h(b.keep || 30)}"></label></div>
+    <label class="check" style="margin-top:10px"><input type="checkbox" id="ben" ${b.enabled === false ? "" : "checked"}> Sauvegarde quotidienne activée</label>
+    <div class="banner ${last?.remote && !last.remote.ok ? "t-danger" : last ? "t-success" : "t-info"}" style="margin:14px 0 0">${icon(last?.remote && !last.remote.ok ? "alert" : "check")}<div class="grow">${last
+      ? `Dernière sauvegarde : <b>${fmtDate(last.at, true)}</b> (${Math.round(last.size / 1024)} Ko)${last.remote ? last.remote.ok ? ` · copiée dans ${h(last.remote.dir)}${last.files ? `, ${last.files} nouveau(x) fichier(s)` : ""}` : ` · <b>copie impossible</b> : ${h(last.remote.error)}` : " · pas de dossier de copie défini"}`
+      : "Aucune sauvegarde pour l'instant."}</div></div>`,
+    `<div class="row"><button class="btn sm" id="bsave">${icon("save", "sm")} Enregistrer</button><button class="btn sm primary" id="brun">${icon("refresh", "sm")} Sauvegarder maintenant</button></div>`);
+  const saveB = async () => { S.settings.backup = await api("PUT", "/backup/settings", { dir: $("#bdir").value, keep: $("#bkeep").value, enabled: $("#ben").checked }); };
+  $("#bsave").onclick = async () => { try { await saveB(); toast("Réglages de sauvegarde enregistrés"); autoBackup(box); } catch (e) { fail(e); } };
+  $("#brun").onclick = async e => {
+    e.currentTarget.disabled = true;
+    try { await saveB(); const r = await api("POST", "/backup/run"); r.remote && !r.remote.ok ? fail(`Copie impossible : ${r.remote.error}`) : toast("Sauvegarde effectuée"); } catch (err) { fail(err); }
+    autoBackup(box);
+  };
+}
+
+/* -------- Utilisateurs -------- */
+function utilisateurs(body) {
+  const draw = async () => {
+    let users = [];
+    try { users = await api("GET", "/users"); } catch (e) { return fail(e); }
+    body.innerHTML = card("Comptes utilisateurs", `<p style="margin-top:0">Chaque personne se connecte avec son email et son mot de passe. Le mot de passe principal (ADMIN_PASSWORD, email vide) reste toujours valable.</p>
+      <ul class="hint" style="margin-top:0"><li><b>Administrateur</b> : accès complet.</li><li><b>Employé</b> : devis, contacts, demandes, production, planning, achats, stock — sans prix d'achat, coefficients ni marges, et sans accès aux paramètres, tarifs, facturation et statistiques.</li></ul>
+      <table class="t"><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Dernière connexion</th><th></th></tr></thead><tbody>
+      ${users.map(u => `<tr data-u="${u.id}" class="${u.active ? "" : "muted"}"><td><b>${h(u.name)}</b>${u.active ? "" : " (désactivé)"}</td><td>${h(u.email)}</td><td>${badge(S.roles?.[u.role] || u.role, u.role === "admin" ? "violet" : "info")}</td>
+        <td class="muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt, true) : "jamais"}</td><td class="r"><button class="btn sm" data-ed>${icon("pen", "sm")} Modifier</button></td></tr>`).join("")
+        || `<tr><td colspan="5" class="empty">Aucun compte. Créez un compte pour chaque collaborateur.</td></tr>`}</tbody></table>`,
+      `<button class="btn primary sm" id="nu">${icon("plus", "sm")} Ajouter</button>`);
+    $("#nu").onclick = () => userModal({}, draw);
+    $$("[data-u]", body).forEach(r => { $("[data-ed]", r).onclick = () => userModal(users.find(u => u.id === r.dataset.u), draw); });
+  };
+  draw();
+}
+function userModal(u, done) {
+  const isNew = !u.id;
+  modal({
+    title: isNew ? "Nouveau compte" : `Modifier ${u.name}`,
+    body: `<div class="grid g2"><label class="f"><span>Nom</span><input type="text" id="un" value="${h(u.name)}"></label>
+      <label class="f"><span>Email</span><input type="email" id="ue" value="${h(u.email)}"></label>
+      <label class="f"><span>Rôle</span><select id="ur">${Object.entries(S.roles || { admin: "Administrateur", employe: "Employé" }).map(([k, l]) => `<option value="${k}" ${k === (u.role || "employe") ? "selected" : ""}>${h(l)}</option>`).join("")}</select></label>
+      <label class="f"><span>${isNew ? "Mot de passe" : "Nouveau mot de passe"}</span><input type="text" id="up" autocomplete="new-password" placeholder="${isNew ? "8 caractères minimum" : "laisser vide pour ne pas changer"}"></label></div>
+      ${isNew ? "" : `<label class="check" style="margin-top:10px"><input type="checkbox" id="ua" ${u.active ? "checked" : ""}> Compte actif</label>`}
+      <p class="hint">Communiquez le mot de passe à la personne ; elle se connecte sur la même adresse que vous.</p>`,
+    actions: [...(isNew ? [] : [{ label: "Supprimer", cls: "danger ghost", onClick: async () => {
+      if (!(await confirmBox(`Supprimer le compte de ${u.name} ?`, "La personne ne pourra plus se connecter.", { danger: true, label: "Supprimer" }))) return false;
+      await api("DELETE", `/users/${u.id}`); done();
+    } }]), { label: "Annuler" }, { label: "Enregistrer", cls: "primary", onClick: async el => {
+      const b = { name: $("#un", el).value, email: $("#ue", el).value, role: $("#ur", el).value };
+      if ($("#up", el).value) b.password = $("#up", el).value;
+      if (!isNew) b.active = $("#ua", el).checked;
+      await api(isNew ? "POST" : "PUT", isNew ? "/users" : `/users/${u.id}`, b);
+      toast("Compte enregistré"); done();
+    } }],
+  });
+}
+
 /* -------- Sauvegarde -------- */
 function sauvegarde(body) {
-  body.innerHTML = card("Sauvegarde", `<p style="margin-top:0">Exporte toutes les données (devis, contacts, demandes, tâches, prospects, tarifs, paramètres — hors mots de passe). Pensez à sauvegarder régulièrement le dossier <code>data/</code> et <code>uploads/</code> du serveur.</p>
+  body.innerHTML = `<div id="autoBk"></div>` + card("Export manuel", `<p style="margin-top:0">Exporte toutes les données (devis, contacts, demandes, tâches, prospects, tarifs, paramètres — hors mots de passe). Utile pour transférer l'outil sur un autre ordinateur.</p>
     <div class="row"><button class="btn" id="bk">${icon("download")} Exporter toutes les données</button><button class="btn" id="rs">${icon("upload")} Restaurer</button></div>`);
+  autoBackup($("#autoBk"));
   $("#bk").onclick = async () => { try { download(`sauvegarde-atelier-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(await api("GET", "/backup"), null, 2), "application/json"); } catch (e) { fail(e); } };
   $("#rs").onclick = async () => {
     const [file] = await pickFiles({ accept: "application/json,.json", multiple: false });

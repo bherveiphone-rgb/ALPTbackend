@@ -1,6 +1,7 @@
 /* Atelier : tableau de production (glisser-déposer), fiche de fabrication imprimable, facturation & Pennylane. */
 import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, download, toCSV } from "./ui.js";
 import { reloadQuotes } from "./app.js";
+import { bankSection } from "./achats.js";
 
 const CARRIERS = {
   Colissimo: "https://www.laposte.fr/outils/suivre-vos-envois?code={n}", Chronopost: "https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT={n}",
@@ -141,7 +142,9 @@ export async function renderBilling(main) {
       <div class="card kpi"><div class="lbl">Reste à encaisser</div><div class="val num">${fmtEUR(unpaid.reduce((s, q) => s + (q.totals.ttc || 0) - (q.payment?.status === "acompte" ? q.totals.deposit || 0 : 0), 0))}</div><div class="sub">${unpaid.length} commande(s) TTC</div></div>
       <div class="card kpi"><div class="lbl">Soldé ce mois</div><div class="val num">${fmtEUR(paidMonth.reduce((s, q) => s + (q.totals.ttc || 0), 0))}</div><div class="sub">${paidMonth.length} commande(s)</div></div>
     </div>
+    <div id="bank"></div>
     <div class="card"><div class="toolbar"><div class="seg" id="bs">${Object.entries(filters).map(([k, [l, x]]) => `<button data-f="${k}" class="${bf === k ? "on" : ""}">${l} (${x.length})</button>`).join("")}</div></div><div id="bl"></div></div>`;
+  bankSection($("#bank"), () => renderBilling(main));
   const draw = () => {
     const rows = filters[bf][1];
     $("#bl").innerHTML = rows.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Devis</th><th>Client</th><th>Statut</th><th class="r">Total TTC</th><th>Paiement</th><th>Factures</th><th></th></tr></thead><tbody>
