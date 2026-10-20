@@ -248,6 +248,27 @@ function integrations(body, st, save) {
   };
 }
 
+async function autoBackup(box) {
+  let st = {};
+  try { st = await api("GET", "/backup-status"); } catch (e) { return fail(e); }
+  const b = S.settings.backup || {}, last = st.last;
+  box.innerHTML = card("Sauvegarde automatique", `<p style="margin-top:0">Chaque jour, toutes les données sont copiées dans <code>${h(st.localDir)}</code>. Indiquez aussi un dossier synchronisé (OneDrive, Google Drive pour ordinateur, Dropbox, clé USB, NAS…) pour garder une copie hors de l'ordinateur : les visuels et BAT y sont copiés aussi (dossier « fichiers »).</p>
+    <div class="grid g2"><label class="f"><span>Dossier de copie (chemin complet)</span><input type="text" id="bdir" value="${h(b.dir)}" placeholder="C:\\Users\\vous\\OneDrive\\Sauvegardes atelier"></label>
+      <label class="f"><span>Nombre de sauvegardes conservées</span><input type="number" min="1" max="365" id="bkeep" value="${h(b.keep || 30)}"></label></div>
+    <label class="check" style="margin-top:10px"><input type="checkbox" id="ben" ${b.enabled === false ? "" : "checked"}> Sauvegarde quotidienne activée</label>
+    <div class="banner ${last?.remote && !last.remote.ok ? "t-danger" : last ? "t-success" : "t-info"}" style="margin:14px 0 0">${icon(last?.remote && !last.remote.ok ? "alert" : "check")}<div class="grow">${last
+      ? `Dernière sauvegarde : <b>${fmtDate(last.at, true)}</b> (${Math.round(last.size / 1024)} Ko)${last.remote ? last.remote.ok ? ` · copiée dans ${h(last.remote.dir)}${last.files ? `, ${last.files} nouveau(x) fichier(s)` : ""}` : ` · <b>copie impossible</b> : ${h(last.remote.error)}` : " · pas de dossier de copie défini"}`
+      : "Aucune sauvegarde pour l'instant."}</div></div>`,
+    `<div class="row"><button class="btn sm" id="bsave">${icon("save", "sm")} Enregistrer</button><button class="btn sm primary" id="brun">${icon("refresh", "sm")} Sauvegarder maintenant</button></div>`);
+  const saveB = async () => { S.settings.backup = await api("PUT", "/backup/settings", { dir: $("#bdir").value, keep: $("#bkeep").value, enabled: $("#ben").checked }); };
+  $("#bsave").onclick = async () => { try { await saveB(); toast("Réglages de sauvegarde enregistrés"); autoBackup(box); } catch (e) { fail(e); } };
+  $("#brun").onclick = async e => {
+    e.currentTarget.disabled = true;
+    try { await saveB(); const r = await api("POST", "/backup/run"); r.remote && !r.remote.ok ? fail(`Copie impossible : ${r.remote.error}`) : toast("Sauvegarde effectuée"); } catch (err) { fail(err); }
+    autoBackup(box);
+  };
+}
+
 /* -------- Utilisateurs -------- */
 function utilisateurs(body) {
   const draw = async () => {
@@ -290,8 +311,9 @@ function userModal(u, done) {
 
 /* -------- Sauvegarde -------- */
 function sauvegarde(body) {
-  body.innerHTML = card("Sauvegarde", `<p style="margin-top:0">Exporte toutes les données (devis, contacts, demandes, tâches, prospects, tarifs, paramètres — hors mots de passe). Pensez à sauvegarder régulièrement le dossier <code>data/</code> et <code>uploads/</code> du serveur.</p>
+  body.innerHTML = `<div id="autoBk"></div>` + card("Export manuel", `<p style="margin-top:0">Exporte toutes les données (devis, contacts, demandes, tâches, prospects, tarifs, paramètres — hors mots de passe). Utile pour transférer l'outil sur un autre ordinateur.</p>
     <div class="row"><button class="btn" id="bk">${icon("download")} Exporter toutes les données</button><button class="btn" id="rs">${icon("upload")} Restaurer</button></div>`);
+  autoBackup($("#autoBk"));
   $("#bk").onclick = async () => { try { download(`sauvegarde-atelier-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(await api("GET", "/backup"), null, 2), "application/json"); } catch (e) { fail(e); } };
   $("#rs").onclick = async () => {
     const [file] = await pickFiles({ accept: "application/json,.json", multiple: false });

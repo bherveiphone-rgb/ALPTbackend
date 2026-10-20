@@ -20,11 +20,12 @@ import { purchasingRoutes } from "./modules/purchasing.js";
 import { shopRoutes } from "./modules/shops.js";
 import { setupAccounts, ROLES } from "./modules/accounts.js";
 import { atelierRoutes } from "./modules/atelier.js";
+import { insightsRoutes } from "./modules/insights.js";
 
 const SEEDS = {
   settings: SEED_SETTINGS, techniques: SEED_TECHNIQUES, catalog: SEED_CATALOG, clients: [], quotes: [],
   activities: [], tasks: [], requests: [], prospects: [], sequences: SEED_SEQUENCES, optout: [], mailstate: {}, inbox: [], autolog: [], prospstate: {},
-  quoteTemplates: [], bankmatches: [], bankstate: {}, stock: [], stockmoves: [], shops: [], shopOrders: [], users: [], sessions: [],
+  quoteTemplates: [], bankmatches: [], bankstate: {}, stock: [], stockmoves: [], shops: [], shopOrders: [], users: [], sessions: [], backupstate: {},
 };
 
 export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }) {
@@ -359,15 +360,15 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     res.json(summary(q));
   }));
 
+  ctx.backupData = () => ({ ...Object.fromEntries(db.names().filter(n => !["mailstate", "sessions", "backupstate"].includes(n)).map(n => [n, db.get(n)])), settings: publicSettings(db.get("settings")), exportedAt: new Date().toISOString() });
   router.get("/backup", requireAdmin, (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="sauvegarde-devis-${new Date().toISOString().slice(0, 10)}.json"`);
-    const s = db.get("settings");
-    res.json({ ...Object.fromEntries(db.names().filter(n => !["mailstate", "sessions"].includes(n)).map(n => [n, db.get(n)])), settings: publicSettings(s) });
+    res.json(ctx.backupData());
   });
   router.post("/restore", requireAdmin, (req, res) => {
     const b = req.body || {};
     for (const n of db.names()) {
-      if (!(n in b) || ["mailstate", "sessions"].includes(n)) continue;
+      if (!(n in b) || ["mailstate", "sessions", "backupstate"].includes(n)) continue;
       if (n === "settings" && typeof b[n] === "object") {
         const cur = db.get("settings");
         db.set(n, { ...b[n], mail: cur.mail, pennylane: cur.pennylane, qonto: cur.qonto }); // les secrets ne sont pas dans la sauvegarde
@@ -627,6 +628,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   purchasingRoutes(router, ctx);
   shopRoutes(router, ctx);
   atelierRoutes(router, ctx);
+  insightsRoutes(router, ctx, { dataDir, uploadsDir });
   startScheduler(ctx);
 
   return router;

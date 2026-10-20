@@ -10,6 +10,7 @@ import { renderSettings } from "./settings.js";
 import { renderPurchasing, templatePicker } from "./achats.js";
 import { renderShops } from "./boutiques.js";
 import { renderPlanning, renderStock } from "./atelier.js";
+import { renderStats } from "./stats.js";
 
 const root = $("#root");
 
@@ -59,6 +60,10 @@ export async function refreshCounts() {
   } catch { /* hors ligne */ }
 }
 
+/* ---------------- Application installable (PWA) ---------------- */
+let installEvt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("#installApp")?.classList.remove("hidden"); });
+
 /* ---------------- Coquille ---------------- */
 const NAV = [
   ["#/", "dash", "Tableau de bord"],
@@ -76,6 +81,7 @@ const NAV = [
   ["#/achats", "shirt", "Achats"],
   ["#/stock", "box", "Stock"],
   ["#/facturation", "euro", "Facturation", null, true],
+  ["#/stats", "chart", "Statistiques", null, true],
   ["#/simulateur", "calc", "Simulateur de prix", null, true],
   "Réglages",
   ["#/references", "shirt", "Références", null, true],
@@ -92,6 +98,7 @@ function renderShell() {
         `<a href="${n[0]}" data-nav="${n[0]}">${icon(n[1])}<span>${n[2]}</span>${n[3] ? `<span class="count hidden" data-count="${n[3]}"></span>` : ""}</a>`).join("")}</nav>
       <div class="foot"><button class="link-btn" id="newQuoteSide" style="color:#fff">${icon("plus", "sm")} Nouveau devis</button>
         <div style="margin-top:12px;color:var(--side-text);font-size:12.5px">${icon("users", "sm")} ${h(S.user?.name || "")}${isEmp() ? " · employé" : ""}</div>
+        <button class="link-btn hidden" id="installApp" style="color:#fff;margin-top:10px">${icon("download", "sm")} Installer l'application</button>
         <div style="margin-top:6px"><button class="link-btn" id="logout" style="color:var(--side-text);font-weight:500">Se déconnecter</button></div></div>
     </aside>
     <main class="main" id="main"></main>
@@ -102,6 +109,8 @@ function renderShell() {
     sessionStorage.removeItem("devis_pw"); localStorage.removeItem("devis_tok"); location.hash = ""; location.reload();
   };
   $("#newQuoteSide").onclick = () => newQuote();
+  if (installEvt) $("#installApp").classList.remove("hidden");
+  $("#installApp").onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("#installApp").classList.add("hidden"); };
   updateNavCounts();
 }
 export function updateNavCounts() {
@@ -137,7 +146,7 @@ export function route() {
     "": renderDashboard, devis: id ? () => renderEditor(main, id) : renderQuotes,
     contacts: id ? () => renderContact(main, id) : renderContacts, clients: renderContacts,
     demandes: id ? () => renderRequest(main, id) : renderRequests, taches: renderTasks, pipeline: renderPipeline,
-    production: renderProduction, planning: renderPlanning, stock: renderStock, achats: renderPurchasing, boutiques: renderShops, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
+    production: renderProduction, planning: renderPlanning, stats: renderStats, stock: renderStock, achats: renderPurchasing, boutiques: renderShops, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
     references: renderCatalog, techniques: renderTechniques, simulateur: renderSimulator, parametres: renderSettings,
   };
   (views[page] || renderDashboard)(main);

@@ -263,6 +263,7 @@ export function startScheduler(ctx) {
       if (n % 30 === 5 && ctx.pennylaneSync) await ctx.pennylaneSync();
       if (n % 15 === 7 && ctx.qontoEnabled?.()) await ctx.qontoSync().catch(e => ctx.db.set("bankstate", { ...ctx.db.get("bankstate"), lastError: e.message, lastSync: Date.now() }));
       if (ctx.prospectionTick) await ctx.prospectionTick();
+      if (ctx.backupTick) ctx.backupTick();
     } catch (e) { console.error("Planificateur :", e.message); }
     busy = false;
   }, 60_000);

@@ -170,10 +170,11 @@ export async function uploadFile(file) {
   return api("POST", "/upload", { dataUrl, name: file.name });
 }
 
-export function pickFiles({ accept = "image/*,application/pdf", multiple = true } = {}) {
+export function pickFiles({ accept = "image/*,application/pdf", multiple = true, capture = "" } = {}) {
   return new Promise(res => {
     const i = document.createElement("input");
     i.type = "file"; i.accept = accept; i.multiple = multiple;
+    if (capture) i.setAttribute("capture", capture); // ouvre directement l'appareil photo sur mobile
     i.onchange = () => res([...i.files]);
     i.click();
   });

@@ -686,11 +686,11 @@ function drawBatTab(body) {
   const bats = [...(q.bats || [])].reverse();
   const next = (q.bats || []).length + 1;
   const bs = batStatusOf(q);
-  body.innerHTML = `<div class="grid g2" style="grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start">
+  body.innerHTML = `<div class="grid g2 bat-grid">
   <div class="card"><div class="card-h"><h2>Préparer le BAT V${next}</h2>${bs === "modif" ? badge("Modification demandée", "danger") : ""}</div><div class="card-b stack">
     ${E.dirty ? `<div class="warn-list" style="margin:0">Enregistrez le devis avant d'envoyer le BAT.</div>` : ""}
     <div class="drop" id="drop">${icon("upload")}<div style="margin-top:6px"><b>Déposez vos fichiers de BAT</b> (images ou PDF)<br><small>ou cliquez pour parcourir</small></div></div>
-    <div class="row"><button class="btn" id="mockBtn">${icon("layers")} Créer une maquette (logo sur le textile)</button></div>
+    <div class="row"><button class="btn" id="mockBtn">${icon("layers")} Créer une maquette (logo sur le textile)</button><button class="btn" id="photoBtn">${icon("camera")} Prendre une photo</button></div>
     <div class="bat-files" id="staged"></div>
     <label class="f"><span>Caractéristiques techniques (rappel affiché au client)</span><textarea id="specs" rows="6">${h(autoSpecs())}</textarea></label>
     <label class="f"><span>Message au client</span><textarea id="batMsg" rows="3" placeholder="Ex. : Voici votre BAT, merci de vérifier attentivement l'orthographe et les couleurs."></textarea></label>
@@ -719,6 +719,12 @@ function drawBatTab(body) {
     }
   }, "image/*,application/pdf");
   $("#mockBtn").onclick = () => mockupTool(file => { E.staged.push(file); drawStaged(); });
+  // Photo d'un échantillon / premier tirage : appareil photo direct sur téléphone ou tablette
+  $("#photoBtn").onclick = async () => {
+    const [f] = await pickFiles({ accept: "image/*", multiple: false, capture: "environment" });
+    if (!f) return;
+    try { toast("Envoi de la photo…"); E.staged.push({ ...(await uploadFile(f)), name: `Photo ${new Date().toLocaleString("fr-FR")}` }); drawStaged(); } catch (e) { fail(e); }
+  };
   $("#sendBat").onclick = async () => {
     if (E.dirty && !(await save(true))) return;
     if (!E.staged.length) return fail("Ajoutez au moins un fichier ou une maquette.");
