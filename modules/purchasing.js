@@ -63,8 +63,9 @@ export function purchasingRoutes(router, ctx) {
     const stock = db.get("stock");
     const suppliers = {};
     for (const q of quotes) {
+      const kept = new Set((q.computed?.lines || []).map(l => l.id)); // options non retenues exclues
       for (const l of q.lines || []) {
-        if (l.supplied || l.kind === "print" || l.ordered) continue;
+        if (l.supplied || l.kind === "print" || l.ordered || !kept.has(l.id)) continue;
         const sup = supplierOf(l);
         const s = (suppliers[sup] ||= { name: sup, rows: {}, quotes: new Set() });
         s.quotes.add(q.id);

@@ -1,10 +1,11 @@
 /* Éditeur de devis : lignes, marquages, calcul en direct, BAT, échanges. */
 import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, ago, uid, num, clone, uploadFile, bindDrop, lightbox, pickFiles } from "./ui.js";
-import { computeQuote, lineQty, resolveFormat, QUOTE_STATUSES, BAT_STATUSES, batStatusOf } from "./pricing.js";
+import { computeQuote, lineQty, resolveFormat, lineIncluded, QUOTE_STATUSES, BAT_STATUSES, batStatusOf } from "./pricing.js";
 import { reloadQuotes, clientModal, clientSnapshot, CLIENT_FIELDS, statusBadge, batBadge, newQuote } from "./app.js";
 import { emailComposer, taskModal, activityModal } from "./contacts.js";
 import { render as renderTpl } from "./tpl.js";
 import { saveAsTemplate } from "./achats.js";
+import { createShop } from "./boutiques.js";
 
 /** Variables des modèles d'emails pour ce devis (mêmes noms que côté serveur). */
 function tplVars(q, extra = {}) {
@@ -47,7 +48,7 @@ async function save(silent = false) {
     const saved = await api("PUT", `/quotes/${q.id}`, {
       title: q.title, clientId: q.clientId, client: q.client, lines: q.lines, fees: q.fees, discountPct: q.discountPct,
       shipping: q.shipping, vatRate: q.vatRate, depositPct: q.depositPct, validUntil: q.validUntil, leadTime: q.leadTime, deadline: q.deadline,
-      notes: q.notes, internalNotes: q.internalNotes, setupOverrides: q.setupOverrides, status: q.status,
+      notes: q.notes, internalNotes: q.internalNotes, setupOverrides: q.setupOverrides, status: q.status, choices: q.choices || {},
     });
     load(saved);
     setDirty(false);
@@ -313,6 +314,16 @@ function drawLines() {
       <button class="btn sm ghost icon" data-act="del" title="Supprimer">${icon("trash", "sm")}</button>
     </div>
     <div class="line-b">
+      <div class="row" style="gap:8px;font-size:13px">
+        <select class="sm" data-mode style="width:170px" title="Une option ou une variante est proposée au client, qui choisit sur son espace">
+          <option value="normal" ${(l.mode || "normal") === "normal" ? "selected" : ""}>Ligne incluse</option>
+          <option value="option" ${l.mode === "option" ? "selected" : ""}>Option facultative</option>
+          <option value="variant" ${l.mode === "variant" ? "selected" : ""}>Variante (au choix)</option></select>
+        ${l.mode === "variant" ? `<input class="sm" data-group style="width:170px" value="${h(l.group || "")}" placeholder="Groupe (ex. Marquage dos)">` : ""}
+        ${l.mode === "option" ? `<label class="check"><input type="checkbox" data-incl ${q.choices?.options?.[l.id] ? "checked" : ""}> retenue (incluse dans le total)</label>` : ""}
+        ${l.mode === "variant" ? `<label class="check"><input type="radio" name="vg-${h(l.group || "")}" data-incl ${lineIncluded(q, l) ? "checked" : ""}> variante retenue</label>` : ""}
+        <span data-alt="${l.id}" class="muted"></span>
+      </div>
       <div><div class="section-lbl">${isPrint ? "Quantité (exemplaires)" : uni === "objet" ? "Quantité" : "Quantités par taille"} ${isPrint || uni === "objet" ? "" : `<button class="link-btn" data-act="addsize" style="font-size:11.5px;text-transform:none;letter-spacing:0">+ taille</button>`}</div>
         <div class="sizes">${sizes.map(s => `<label class="size-cell"><span>${h(s)}</span><input type="number" min="0" inputmode="numeric" data-size="${h(s)}" value="${l.sizes?.[s] || ""}" placeholder="0">${num(l.sizeSurcharges?.[s]) ? `<small class="sur">+${fmtEUR(l.sizeSurcharges[s])}</small>` : ""}</label>`).join("")}</div>
       </div>
@@ -335,6 +346,16 @@ function drawLines() {
   // Évènements par ligne
   for (const el of $$("#lines .line")) {
     const l = q.lines.find(x => x.id === el.dataset.line);
+    $("[data-mode]", el).onchange = e => { l.mode = e.target.value; if (l.mode === "variant" && !l.group) l.group = "Variante"; setDirty(); drawLines(); recalc(); };
+    const grp = $("[data-group]", el);
+    if (grp) grp.onchange = () => { l.group = grp.value.trim(); setDirty(); drawLines(); recalc(); };
+    const incl = $("[data-incl]", el);
+    if (incl) incl.onchange = () => {
+      q.choices ||= {}; q.choices.options ||= {}; q.choices.variants ||= {};
+      if (l.mode === "option") q.choices.options[l.id] = incl.checked;
+      else q.choices.variants[l.group || ""] = l.id;
+      setDirty(); drawLines(); recalc();
+    };
     $$("[data-size]", el).forEach(i => i.oninput = () => {
       const v = Math.max(0, parseInt(i.value, 10) || 0);
       if (v) l.sizes[i.dataset.size] = v; else delete l.sizes[i.dataset.size];
@@ -494,7 +515,12 @@ function recalc(redrawSetups = true) {
   const T = c.totals;
   $("#qtyTotal").textContent = `${T.qty} pièce${T.qty > 1 ? "s" : ""} au total`;
 
-  for (const l of c.lines) {
+  for (const a of c.alternatives || []) {
+    const el = $(`[data-alt="${a.id}"]`);
+    if (el) el.innerHTML = `Non incluse — <b>${a.deltaHt >= 0 ? "+" : ""}${fmtEUR(a.deltaHt)} HT</b> si le client la retient`;
+  }
+  for (const l of c.lines) { const el = $(`[data-alt="${l.id}"]`); if (el) el.textContent = l.mode !== "normal" ? "Incluse dans le total" : ""; }
+  for (const l of [...c.lines, ...(c.alternatives || []).map(a => a.line).filter(Boolean)]) {
     const src = q.lines.find(x => x.id === l.id);
     const tu = $(`[data-tu="${l.id}"]`);
     if (tu) tu.placeholder = l.textileUnit.toFixed(2);
@@ -558,11 +584,13 @@ function drawSummary(c) {
     <div class="row" style="margin-top:14px">
       <button class="btn sm" id="dupQ">${icon("copy", "sm")} Dupliquer</button>
       <button class="btn sm" id="tplQ" title="Réutiliser ce devis pour d'autres clients">${icon("save", "sm")} Modèle</button>
+      <button class="btn sm" id="shopQ" title="Page de commande pour les membres du club">${icon("card", "sm")} Boutique</button>
       <button class="btn sm" id="refreshQ" title="Réappliquer vos grilles tarifaires actuelles">${icon("refresh", "sm")} Actualiser tarifs</button>
       <button class="btn sm danger" id="delQ">${icon("trash", "sm")}</button>
     </div>
   </div>`;
   $("#status").onchange = e => { q.status = e.target.value; setDirty(); $("#hdrStatus").innerHTML = `${statusBadge(q.status)} ${batBadge(batStatusOf(q))}`; };
+  $("#shopQ").onclick = async () => { if (E.dirty && !(await save(true))) return; createShop(() => { location.hash = "#/boutiques"; }, E.q.id); };
   $("#tplQ").onclick = async () => { if (E.dirty && !(await save(true))) return; saveAsTemplate(E.q); };
   $("#dupQ").onclick = async () => {
     if (E.dirty && !(await save(true))) return;

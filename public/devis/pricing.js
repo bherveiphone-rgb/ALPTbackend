@@ -78,7 +78,36 @@ export function resolveFormat(tech, p) {
  * @param techniques liste des techniques de marquage (avec grilles)
  * @param settings   paramètres (TVA, coef, dégressifs textile…)
  */
+/** Une ligne est-elle retenue ? (option cochée, variante choisie — la première du groupe par défaut) */
+export function lineIncluded(quote, line) {
+  const mode = line.mode || "normal";
+  if (mode === "option") return !!quote.choices?.options?.[line.id];
+  if (mode === "variant") {
+    const chosen = quote.choices?.variants?.[line.group || ""];
+    const first = (quote.lines || []).find(l => l.mode === "variant" && (l.group || "") === (line.group || ""));
+    return (chosen && (quote.lines || []).some(l => l.id === chosen) ? chosen : first?.id) === line.id;
+  }
+  return true;
+}
+
+/**
+ * Calcule un devis complet. Les options non cochées et les variantes non choisies sont exclues des totaux ;
+ * `alternatives` donne pour chacune l'écart de prix si le client la retenait.
+ */
 export function computeQuote(quote, techniques, settings) {
+  const all = quote.lines || [];
+  const incl = all.filter(l => lineIncluded(quote, l));
+  const base = computeCore({ ...quote, lines: incl }, techniques, settings);
+  base.alternatives = all.filter(l => !incl.includes(l)).map(l => {
+    const lines = l.mode === "variant" ? [...incl.filter(x => !(x.mode === "variant" && (x.group || "") === (l.group || ""))), l] : [...incl, l];
+    const alt = computeCore({ ...quote, lines }, techniques, settings);
+    return { id: l.id, mode: l.mode, group: l.group || "", line: alt.lines.find(x => x.id === l.id),
+      deltaHt: r2(alt.totals.ht - base.totals.ht), deltaTtc: r2(alt.totals.ttc - base.totals.ttc) };
+  });
+  return base;
+}
+
+function computeCore(quote, techniques, settings) {
   const techById = Object.fromEntries((techniques || []).map(t => [t.id, t]));
   const warnings = [];
   const defaultCoef = num(settings?.defaultCoef) ?? 1.8;
@@ -168,7 +197,7 @@ export function computeQuote(quote, techniques, settings) {
     if (!qty) warnings.push(`${line.name || "Article"} — aucune quantité saisie`);
     return {
       id: line.id, name: line.name || "", ref: line.ref || "", brand: line.brand || "", color: line.color || "",
-      image: line.image || "", note: line.note || "", supplied, kind: line.kind || "article", universe: line.kind === "print" ? "print" : line.universe || "textile", qty, coef, discPct, sizeRows,
+      image: line.image || "", note: line.note || "", supplied, kind: line.kind || "article", mode: line.mode || "normal", group: line.group || "", universe: line.kind === "print" ? "print" : line.universe || "textile", qty, coef, discPct, sizeRows,
       textileUnit, textileTotal, textileCost, persos, persoUnit, persoTotal,
       unit: qty ? ru(total / qty) : ru(textileUnit + persoUnit), total,
       cost: r2(textileCost + persos.reduce((s, p) => s + p.cost, 0)),

@@ -175,6 +175,7 @@ function automatisations(body, st) {
     ${row("Relance des devis sans réponse", "Après l'envoi, si le client n'a ni accepté ni refusé. Sinon une tâche « Relancer » vous est proposée.", `<span>Après</span><input type="text" class="sm" style="width:90px" data-k="automation.quoteReminderDays" data-nums="1" value="${h((A.quoteReminderDays || []).join(", "))}"><span>jours</span>${chk("automation.autoSendQuoteReminders", "envoyer l'email automatiquement", A.autoSendQuoteReminders)}`)}
     ${row("Devis bientôt expiré", "Crée une tâche quelques jours avant la fin de validité.", `<span>Prévenir</span>${n("expiringDays", A.expiringDays)}<span>jours avant</span>`)}
     ${row("Demande non traitée", "Délai pour répondre à une nouvelle demande (échéance de la tâche).", n("requestResponseHours", A.requestResponseHours) + "<span>heures</span>")}
+    ${row("Relance « nouvelle saison »", "Environ un an après la dernière commande d'un client : proposer de la reconduire (email « Relance avant la saison » ou tâche).", `<span>Après</span>${n("seasonWeeks", A.seasonWeeks)}<span>semaines</span>${chk("automation.autoSendSeason", "envoyer l'email automatiquement", A.autoSendSeason)}`)}
     ${row("Clients à recontacter", "Tâche si un client n'a rien commandé depuis… (renouvellement de saison).", n("reactivationMonths", A.reactivationMonths) + "<span>mois</span>")}
     ${row("Emails d'inconnus", "Créer automatiquement une demande quand un inconnu écrit au sujet d'un devis, d'un prix…", chk("automation.inboundToRequest", "activer", A.inboundToRequest))}
   </div></div>

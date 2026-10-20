@@ -17,6 +17,7 @@ import { pennylaneRoutes } from "./modules/pennylane.js";
 import { prospectionRoutes } from "./modules/prospection.js";
 import { qontoRoutes } from "./modules/qonto.js";
 import { purchasingRoutes } from "./modules/purchasing.js";
+import { shopRoutes } from "./modules/shops.js";
 
 const SEEDS = {
   settings: SEED_SETTINGS, techniques: SEED_TECHNIQUES, catalog: SEED_CATALOG, clients: [], quotes: [],
@@ -177,7 +178,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   }));
 
   const EDITABLE = ["title", "clientId", "client", "lines", "fees", "discountPct", "shipping", "vatRate", "depositPct",
-    "validUntil", "leadTime", "notes", "internalNotes", "setupOverrides", "status", "deadline", "requestId", "files", "lostReason"];
+    "validUntil", "leadTime", "notes", "internalNotes", "setupOverrides", "status", "deadline", "requestId", "files", "lostReason", "choices"];
   const pick = body => Object.fromEntries(EDITABLE.filter(k => k in body).map(k => [k, body[k]]));
 
   const nextNumber = settings => `${settings.quotePrefix || "DEV"}-${new Date().getFullYear()}-${String(settings.nextNumber || 1).padStart(4, "0")}`;
@@ -392,6 +393,12 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
         persos: l.persos.map(x => ({ technique: x.techniqueName, position: x.position, format: x.formatLabel, w: x.w, h: x.h, colors: x.colorsEnabled ? x.colors : null, design: x.design, options: x.options || [], universe: x.universe })),
       })),
       setups: c.setups.map(s => ({ label: s.label, amount: s.amount })),
+      // options / variantes : le client peut choisir tant que le devis n'est pas accepté
+      choosable: ["brouillon", "envoye"].includes(q.status),
+      choices: (c.lines.filter(l => l.mode !== "normal").map(l => ({ id: l.id, mode: l.mode, group: l.group, included: true, name: l.name, total: l.total, deltaHt: 0 })))
+        .concat((c.alternatives || []).map(a => ({ id: a.id, mode: a.mode, group: a.group, included: false, name: a.line?.name || "", total: a.line?.total || 0, deltaHt: a.deltaHt, deltaTtc: a.deltaTtc,
+          line: a.line ? { name: a.line.name, color: a.line.color, image: a.line.image, qty: a.line.qty, unit: a.line.unit, note: a.line.note, kind: a.line.kind,
+            persos: a.line.persos.map(x => ({ technique: x.techniqueName, position: x.position, format: x.formatLabel, w: x.w, h: x.h, colors: x.colorsEnabled ? x.colors : null, options: x.options || [] })) } : null }))),
       fees: c.fees, totals,
       acceptance: q.acceptance ? { name: q.acceptance.name, at: q.acceptance.at, signature: q.acceptance.signature } : null,
       decline: q.decline || null,
@@ -525,6 +532,22 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     res.json(publicView(q, req));
   }));
 
+  // Le client coche une option ou choisit une variante : le total est recalculé
+  router.post("/public/quote/:token/choices", wrap((req, res) => {
+    const { quotes, q } = findByToken(req.params.token);
+    if (!q) return res.status(404).json({ error: "Lien invalide" });
+    if (!["brouillon", "envoye"].includes(q.status)) return res.status(400).json({ error: "Ce devis est déjà validé : contactez-nous pour le modifier." });
+    const ids = new Set((q.lines || []).map(l => l.id));
+    const opts = Object.fromEntries(Object.entries(req.body?.options || {}).filter(([id]) => ids.has(id) && q.lines.find(l => l.id === id)?.mode === "option").map(([id, v]) => [id, !!v]));
+    const vars = Object.fromEntries(Object.entries(req.body?.variants || {}).filter(([g, id]) => q.lines.some(l => l.id === id && l.mode === "variant" && (l.group || "") === g)));
+    q.choices = { options: { ...(q.choices?.options || {}), ...opts }, variants: { ...(q.choices?.variants || {}), ...vars } };
+    recompute(q);
+    q.updatedAt = Date.now(); q.attention = true;
+    log(q, "choice", `Le client a ajusté ses options — nouveau total ${fmtEUR(q.computed.totals.ht)} HT`);
+    db.set("quotes", quotes);
+    res.json(publicView(q, req));
+  }));
+
   router.post("/public/quote/:token/review", wrap(async (req, res) => {
     const { quotes, q } = findByToken(req.params.token);
     if (!q) return res.status(404).json({ error: "Lien invalide" });
@@ -588,6 +611,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   prospectionRoutes(router, ctx);
   qontoRoutes(router, ctx);
   purchasingRoutes(router, ctx);
+  shopRoutes(router, ctx);
   startScheduler(ctx);
 
   return router;

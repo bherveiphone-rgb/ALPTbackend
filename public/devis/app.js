@@ -8,6 +8,7 @@ import { renderProduction, renderBilling, renderSheet } from "./operations.js";
 import { renderProspection } from "./prospection.js";
 import { renderSettings } from "./settings.js";
 import { renderPurchasing, templatePicker } from "./achats.js";
+import { renderShops } from "./boutiques.js";
 
 const root = $("#root");
 
@@ -58,6 +59,7 @@ const NAV = [
   ["#/pipeline", "layers", "Pipeline"],
   ["#/devis", "file", "Devis", "quotes"],
   ["#/contacts", "users", "Contacts"],
+  ["#/boutiques", "card", "Boutiques club"],
   ["#/prospection", "trend", "Prospection"],
   "Atelier",
   ["#/production", "brush", "Production"],
@@ -118,7 +120,7 @@ export function route() {
     "": renderDashboard, devis: id ? () => renderEditor(main, id) : renderQuotes,
     contacts: id ? () => renderContact(main, id) : renderContacts, clients: renderContacts,
     demandes: id ? () => renderRequest(main, id) : renderRequests, taches: renderTasks, pipeline: renderPipeline,
-    production: renderProduction, achats: renderPurchasing, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
+    production: renderProduction, achats: renderPurchasing, boutiques: renderShops, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
     references: renderCatalog, techniques: renderTechniques, simulateur: renderSimulator, parametres: renderSettings,
   };
   (views[page] || renderDashboard)(main);

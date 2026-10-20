@@ -112,6 +112,7 @@ function render() {
     <div class="steps">${STEP_DEFS.map(([l, ic], i) => `<div class="step ${i < si ? "done" : i === si ? "cur" : ""}"><span class="n">${i < si ? icon("check", "sm") : i + 1}</span>${l}</div>`).join("")}</div>
     ${callout(canAccept, accepted, expired, lastBat)}
     ${trackingCard()}
+    ${choicesCard()}
     <div id="reviewSec"></div>
     <div id="batSec"></div>
     <div class="card"><div class="card-h"><h2>Détail du devis</h2><small class="muted">${T.qty} pièce${T.qty > 1 ? "s" : ""}</small></div>
@@ -148,6 +149,30 @@ function render() {
   renderBat();
   renderMessages();
   renderReview();
+  bindChoices();
+}
+
+/** Options facultatives et variantes au choix du client. */
+function choicesCard() {
+  const ch = D.choices || [];
+  if (!ch.length) return "";
+  const groups = [...new Set(ch.filter(c => c.mode === "variant").map(c => c.group))];
+  const opts = ch.filter(c => c.mode === "option");
+  const dis = !D.choosable || PREVIEW ? "disabled" : "";
+  const delta = c => c.included ? `<small class="muted">incluse</small>` : `<b>${c.deltaHt >= 0 ? "+" : ""}${fmtEUR(c.deltaHt)} HT</b>`;
+  return `<div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${icon("sparkle")} Vos options</h2><small class="muted">${D.choosable ? "le total se met à jour automatiquement" : "choix validés"}</small></div><div class="card-b stack">
+    ${groups.map(g => `<div><div class="section-lbl">${h(g || "Au choix")}</div>${ch.filter(c => c.mode === "variant" && c.group === g).map(c => `<label class="check" style="display:flex;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px">
+      <input type="radio" name="vg-${h(g)}" data-var="${h(g)}" value="${c.id}" ${c.included ? "checked" : ""} ${dis}> <span style="flex:1">${h(c.name)}</span> ${delta(c)}</label>`).join("")}</div>`).join("")}
+    ${opts.length ? `<div><div class="section-lbl">Options facultatives</div>${opts.map(c => `<label class="check" style="display:flex;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px">
+      <input type="checkbox" data-opt="${c.id}" ${c.included ? "checked" : ""} ${dis}> <span style="flex:1">${h(c.name)}${c.line?.qty ? ` <small class="muted">(${c.line.qty} ${c.line.kind === "print" ? "ex." : "pcs"})</small>` : ""}</span> ${delta(c)}</label>`).join("")}</div>` : ""}
+  </div></div>`;
+}
+function bindChoices() {
+  const send = async body => {
+    try { D = await call("POST", "/choices", body); render(); toast(`Total mis à jour : ${fmtEUR(D.totals.ttc)} TTC`); } catch (e) { fail(e); }
+  };
+  $$("[data-var]").forEach(r => r.onchange = () => send({ variants: { [r.dataset.var]: r.value } }));
+  $$("[data-opt]").forEach(c => c.onchange = () => send({ options: { [c.dataset.opt]: c.checked } }));
 }
 
 /** Suivi de fabrication et d'expédition. */

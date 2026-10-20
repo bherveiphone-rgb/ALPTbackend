@@ -160,7 +160,28 @@ export async function runAutomations(ctx, req) {
     }
   }
 
-  // 7. Clients à recontacter (pas de commande depuis N mois)
+  // 7. Relance « nouvelle saison » : ~11 mois après la dernière commande livrée / acceptée (une fois par an)
+  if (A.seasonWeeks) {
+    const year = new Date().getFullYear();
+    const byClient = {};
+    for (const q of quotes.filter(x => ["accepte", "production", "expedie", "livre"].includes(x.status) && x.clientId)) {
+      const at = q.acceptedAt || q.acceptance?.at || q.updatedAt;
+      if (!byClient[q.clientId] || at > byClient[q.clientId].at) byClient[q.clientId] = { q, at };
+    }
+    for (const [cid, { q, at }] of Object.entries(byClient)) {
+      const age = now - at;
+      if (age < A.seasonWeeks * 7 * DAY || age > (A.seasonWeeks + 8) * 7 * DAY) continue; // fenêtre de 8 semaines
+      const key = `client:${cid}:season:${year}`;
+      if (db.get("tasks").some(t => t.key === key)) continue;
+      const vars = { lien_demande: `${ctx.baseUrl(req)}/devis/demande.html` };
+      if (A.autoSendSeason && canMail && q.client?.email && await ctx.sendQuoteTemplate(q, "season_reminder", req, vars)) {
+        ctx.addTask({ key, title: `Relance saison envoyée à ${q.client?.company || q.client?.contact} — suivre la réponse`, clientId: cid, quoteId: q.id, auto: true, done: false, due: now + 7 * DAY });
+        out.emails++;
+      } else task({ key, title: `Nouvelle saison : proposer de reconduire ${q.number} à ${q.client?.company || q.client?.contact}`, clientId: cid, quoteId: q.id });
+    }
+  }
+
+  // 8. Clients à recontacter (pas de commande depuis N mois)
   if (A.reactivationMonths) {
     const limit = A.reactivationMonths * 30 * DAY;
     const year = new Date().getFullYear();
