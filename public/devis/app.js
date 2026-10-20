@@ -1,5 +1,5 @@
 /* Back-office — routeur, connexion, navigation, tableau de bord, liste des devis. */
-import { S, api, h, $, $$, icon, badge, fail, fmtEUR, fmtDate, ago, download, toCSV } from "./ui.js";
+import { S, api, isEmp, h, $, $$, icon, badge, fail, fmtEUR, fmtDate, ago, download, toCSV } from "./ui.js";
 import { QUOTE_STATUSES, BAT_STATUSES } from "./pricing.js";
 import { renderEditor, editorGuard } from "./editor.js";
 import { renderCatalog, renderTechniques, renderSimulator } from "./catalog.js";
@@ -9,6 +9,7 @@ import { renderProspection } from "./prospection.js";
 import { renderSettings } from "./settings.js";
 import { renderPurchasing, templatePicker } from "./achats.js";
 import { renderShops } from "./boutiques.js";
+import { renderPlanning, renderStock } from "./atelier.js";
 
 const root = $("#root");
 
@@ -16,18 +17,26 @@ const root = $("#root");
 function renderLogin() {
   root.innerHTML = `<div class="login"><form class="card" id="loginForm">
     <div class="brand"><div class="logo">${icon("file")}</div><div>Devis &amp; BAT<small style="color:var(--muted)">Espace atelier</small></div></div>
-    <label class="f"><span>Mot de passe administrateur</span><input type="password" id="pw" autocomplete="current-password" required></label>
+    <label class="f"><span>Email</span><input type="email" id="em" autocomplete="username" placeholder="Laisser vide pour le compte principal"></label>
+    <label class="f" style="margin-top:10px"><span>Mot de passe</span><input type="password" id="pw" autocomplete="current-password" required></label>
     <button class="btn primary lg" style="width:100%;margin-top:16px">${icon("lock")} Se connecter</button>
-    <p class="hint" style="text-align:center;margin-top:14px">Même mot de passe que le back-office boutique (ADMIN_PASSWORD).</p>
+    <p class="hint" style="text-align:center;margin-top:14px">Compte principal : email vide + mot de passe ADMIN_PASSWORD.<br>Collaborateurs : email et mot de passe créés dans Paramètres › Utilisateurs.</p>
   </form></div>`;
-  $("#pw").focus();
+  $("#em").focus();
   $("#loginForm").onsubmit = async e => {
     e.preventDefault();
-    S.pw = $("#pw").value;
+    const email = $("#em").value.trim(), pw = $("#pw").value;
     try {
+      if (email) {
+        const r = await fetch("/api/devis/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: pw }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Connexion impossible");
+        S.tok = d.token; S.pw = "";
+        localStorage.setItem("devis_tok", d.token);
+      } else S.pw = pw;
       await boot();
-      sessionStorage.setItem("devis_pw", S.pw);
-    } catch (err) { fail(err); }
+      if (!email) sessionStorage.setItem("devis_pw", S.pw);
+    } catch (err) { S.tok = ""; localStorage.removeItem("devis_tok"); fail(err); }
   };
 }
 
@@ -63,28 +72,35 @@ const NAV = [
   ["#/prospection", "trend", "Prospection"],
   "Atelier",
   ["#/production", "brush", "Production"],
+  ["#/planning", "calendar", "Planning"],
   ["#/achats", "shirt", "Achats"],
-  ["#/facturation", "euro", "Facturation"],
-  ["#/simulateur", "calc", "Simulateur de prix"],
+  ["#/stock", "box", "Stock"],
+  ["#/facturation", "euro", "Facturation", null, true],
+  ["#/simulateur", "calc", "Simulateur de prix", null, true],
   "Réglages",
-  ["#/references", "shirt", "Références"],
-  ["#/techniques", "sparkle", "Marquages & tarifs"],
-  ["#/parametres", "gear", "Paramètres"],
+  ["#/references", "shirt", "Références", null, true],
+  ["#/techniques", "sparkle", "Marquages & tarifs", null, true],
+  ["#/parametres", "gear", "Paramètres", null, true],
 ];
+const ADMIN_PAGES = ["facturation", "simulateur", "references", "techniques", "parametres", "stats"];
 function renderShell() {
   root.innerHTML = `<div class="mobile-top no-print"><button class="btn ghost icon" id="burger">${icon("menu")}</button><b>${h(S.settings.company.name || "Devis & BAT")}</b></div>
   <div class="app">
     <aside class="side no-print" id="side">
       <div class="brand"><div class="logo">${S.settings.company.logo ? `<img src="${h(S.settings.company.logo)}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;background:#fff">` : icon("file")}</div><div>${h(S.settings.company.name || "Devis & BAT")}<small>Devis · CRM · Production</small></div></div>
-      <nav class="nav">${NAV.map(n => typeof n === "string" ? `<div class="grp">${n}</div>` :
+      <nav class="nav">${NAV.filter(n => typeof n === "string" ? !(isEmp() && n === "Réglages") : !(isEmp() && n[4])).map(n => typeof n === "string" ? `<div class="grp">${n}</div>` :
         `<a href="${n[0]}" data-nav="${n[0]}">${icon(n[1])}<span>${n[2]}</span>${n[3] ? `<span class="count hidden" data-count="${n[3]}"></span>` : ""}</a>`).join("")}</nav>
       <div class="foot"><button class="link-btn" id="newQuoteSide" style="color:#fff">${icon("plus", "sm")} Nouveau devis</button>
-        <div style="margin-top:12px"><button class="link-btn" id="logout" style="color:var(--side-text);font-weight:500">Se déconnecter</button></div></div>
+        <div style="margin-top:12px;color:var(--side-text);font-size:12.5px">${icon("users", "sm")} ${h(S.user?.name || "")}${isEmp() ? " · employé" : ""}</div>
+        <div style="margin-top:6px"><button class="link-btn" id="logout" style="color:var(--side-text);font-weight:500">Se déconnecter</button></div></div>
     </aside>
     <main class="main" id="main"></main>
   </div>`;
   $("#burger").onclick = () => $("#side").classList.toggle("open");
-  $("#logout").onclick = () => { sessionStorage.removeItem("devis_pw"); location.hash = ""; location.reload(); };
+  $("#logout").onclick = async () => {
+    if (S.tok) await api("POST", "/auth/logout").catch(() => {});
+    sessionStorage.removeItem("devis_pw"); localStorage.removeItem("devis_tok"); location.hash = ""; location.reload();
+  };
   $("#newQuoteSide").onclick = () => newQuote();
   updateNavCounts();
 }
@@ -115,12 +131,13 @@ export function route() {
   $$("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === "#/" ? hash === "#/" : hash.startsWith(a.dataset.nav)));
   const main = $("#main");
   window.scrollTo(0, 0);
-  const [, page, id] = hash.split("/");
+  let [, page, id] = hash.split("/");
+  if (isEmp() && ADMIN_PAGES.includes(page)) page = "";
   const views = {
     "": renderDashboard, devis: id ? () => renderEditor(main, id) : renderQuotes,
     contacts: id ? () => renderContact(main, id) : renderContacts, clients: renderContacts,
     demandes: id ? () => renderRequest(main, id) : renderRequests, taches: renderTasks, pipeline: renderPipeline,
-    production: renderProduction, achats: renderPurchasing, boutiques: renderShops, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
+    production: renderProduction, planning: renderPlanning, stock: renderStock, achats: renderPurchasing, boutiques: renderShops, facturation: renderBilling, fiche: () => renderSheet(main, id), prospection: renderProspection,
     references: renderCatalog, techniques: renderTechniques, simulateur: renderSimulator, parametres: renderSettings,
   };
   (views[page] || renderDashboard)(main);
@@ -270,4 +287,4 @@ export const CLIENT_FIELDS = [["company", "Société / Club / Association"], ["c
 export { clientModal } from "./contacts.js";
 
 /* ---------------- Démarrage ---------------- */
-if (S.pw) boot().catch(() => renderLogin()); else renderLogin();
+if (S.pw || S.tok) boot().catch(() => renderLogin()); else renderLogin();

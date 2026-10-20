@@ -18,6 +18,8 @@ import { prospectionRoutes } from "./modules/prospection.js";
 import { qontoRoutes } from "./modules/qonto.js";
 import { purchasingRoutes } from "./modules/purchasing.js";
 import { shopRoutes } from "./modules/shops.js";
+import { setupAccounts, ROLES } from "./modules/accounts.js";
+import { atelierRoutes } from "./modules/atelier.js";
 
 const SEEDS = {
   settings: SEED_SETTINGS, techniques: SEED_TECHNIQUES, catalog: SEED_CATALOG, clients: [], quotes: [],
@@ -38,11 +40,13 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   const ctx = createCore({ db, mail, adminPassword });
   ctx.uploadsDir = uploadsDir;
   ctx.stripe = stripe;
+  const accountRoutes = setupAccounts(ctx, adminPassword);
   const { requireAdmin, wrap, logQuote: log } = ctx;
 
   const router = express.Router();
   router.use(express.json({ limit: "40mb" }));
   router.use(ctx.trackOrigin);
+  accountRoutes(router);
 
   /* -------- Calcul : les techniques figées dans le devis priment -------- */
   const techsFor = q => {
@@ -51,6 +55,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     const ids = new Set([...global.map(t => t.id), ...Object.keys(snap)]);
     return [...ids].map(id => snap[id] || global.find(t => t.id === id)).filter(Boolean);
   };
+  ctx.techsFor = techsFor;
   function recompute(q, settings = db.get("settings")) {
     const global = db.get("techniques");
     q.techSnapshot ||= {};
@@ -96,9 +101,10 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     pennylane: { ...s.pennylane, apiKey: "", hasKey: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY) },
     qonto: { ...s.qonto, secretKey: "", hasKey: !!(s.qonto.secretKey || process.env.QONTO_SECRET_KEY) },
   });
-  router.get("/bootstrap", requireAdmin, (_req, res) => {
+  router.get("/bootstrap", requireAdmin, (req, res) => {
     const s = db.get("settings");
     res.json({
+      user: req.user, roles: ROLES,
       settings: publicSettings(s), techniques: db.get("techniques"), catalog: db.get("catalog"), clients: db.get("clients"),
       mailEnabled: mail.configured(), imapEnabled: mail.imapConfigured(), mailPresets: MAIL_PRESETS, mailState: db.get("mailstate"),
       stripeEnabled: !!process.env.STRIPE_SECRET_KEY, qontoEnabled: !!(s.qonto.login || process.env.QONTO_LOGIN) && !!(s.qonto.secretKey || process.env.QONTO_SECRET_KEY), pennylaneEnabled: !!(s.pennylane.apiKey || process.env.PENNYLANE_API_KEY),
@@ -201,12 +207,20 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
     return q;
   };
 
-  router.post("/quotes", requireAdmin, (req, res) => res.json(withLink(ctx.createQuote(req.body || {}), req)));
+  router.post("/quotes", requireAdmin, (req, res) => {
+    const b = req.body || {};
+    if (ctx.isEmployee(req) && Array.isArray(b.lines)) {
+      const tpl = db.get("quoteTemplates").find(t => t.id === b.templateId);
+      ctx.restoreCosts(b.lines, tpl ? tpl.lines.map((l, i) => ({ ...l, id: b.lines[i]?.id })) : []);
+    }
+    res.json(withLink(ctx.createQuote(b), req));
+  });
 
   router.put("/quotes/:id", requireAdmin, wrap((req, res) => {
     const quotes = db.get("quotes");
     const q = findQuote(quotes, req.params.id);
     const patch = pick(req.body);
+    if (patch.lines && ctx.isEmployee(req)) ctx.restoreCosts(patch.lines, q.lines);
     if (patch.status && patch.status !== q.status) {
       if (!QUOTE_STATUSES[patch.status]) return res.status(400).json({ error: "Statut invalide" });
       log(q, "status", `Statut changé : ${QUOTE_STATUSES[q.status]?.label} → ${QUOTE_STATUSES[patch.status].label}`);
@@ -348,15 +362,15 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   router.get("/backup", requireAdmin, (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="sauvegarde-devis-${new Date().toISOString().slice(0, 10)}.json"`);
     const s = db.get("settings");
-    res.json({ ...Object.fromEntries(db.names().filter(n => n !== "mailstate").map(n => [n, db.get(n)])), settings: publicSettings(s) });
+    res.json({ ...Object.fromEntries(db.names().filter(n => !["mailstate", "sessions"].includes(n)).map(n => [n, db.get(n)])), settings: publicSettings(s) });
   });
   router.post("/restore", requireAdmin, (req, res) => {
     const b = req.body || {};
     for (const n of db.names()) {
-      if (!(n in b) || n === "mailstate") continue;
+      if (!(n in b) || ["mailstate", "sessions"].includes(n)) continue;
       if (n === "settings" && typeof b[n] === "object") {
         const cur = db.get("settings");
-        db.set(n, { ...b[n], mail: cur.mail, pennylane: cur.pennylane }); // les secrets ne sont pas dans la sauvegarde
+        db.set(n, { ...b[n], mail: cur.mail, pennylane: cur.pennylane, qonto: cur.qonto }); // les secrets ne sont pas dans la sauvegarde
       } else if (Array.isArray(b[n])) db.set(n, b[n]);
     }
     res.json({ ok: true });
@@ -612,6 +626,7 @@ export function createDevisRouter({ dataDir, uploadsDir, adminPassword, stripe }
   qontoRoutes(router, ctx);
   purchasingRoutes(router, ctx);
   shopRoutes(router, ctx);
+  atelierRoutes(router, ctx);
   startScheduler(ctx);
 
   return router;

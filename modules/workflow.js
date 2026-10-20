@@ -42,6 +42,7 @@ export function workflowRoutes(router, ctx) {
         ctx.completeTasks(`quote:${q.id}:launch`);
         if (b.notify) emails.push("production_started");
       }
+      if (b.stage === "marquage" && ctx.deductStock) ctx.deductStock(q);
       if (b.stage === "expedie") {
         q.status = "expedie"; p.shippedAt = Date.now();
         if (b.notify) emails.push(p.mode === "retrait" ? "ready_pickup" : "shipped");

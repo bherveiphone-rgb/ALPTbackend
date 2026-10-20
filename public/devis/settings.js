@@ -1,9 +1,9 @@
 /* Paramètres : entreprise, calcul, emails (connexion + modèles), automatisations, formulaire, intégrations, sauvegarde. */
-import { S, api, h, $, $$, icon, badge, toast, fail, confirmBox, num, uid, uploadFile, pickFiles, readAsText, download } from "./ui.js";
+import { S, api, h, $, $$, icon, badge, toast, fail, confirmBox, modal, fmtDate, num, uid, uploadFile, pickFiles, readAsText, download } from "./ui.js";
 import { reloadBootstrap } from "./app.js";
 
 const TABS = [["entreprise", "users", "Entreprise"], ["calcul", "calc", "Devis & calcul"], ["emails", "send", "Boîte mail"], ["modeles", "msg", "Modèles d'emails"],
-  ["automatisations", "sparkle", "Automatisations"], ["formulaire", "link", "Formulaire & portail"], ["prospection", "trend", "Prospection"], ["integrations", "euro", "Pennylane & Qonto"], ["sauvegarde", "download", "Sauvegarde"]];
+  ["automatisations", "sparkle", "Automatisations"], ["formulaire", "link", "Formulaire & portail"], ["prospection", "trend", "Prospection"], ["integrations", "euro", "Pennylane & Qonto"], ["utilisateurs", "lock", "Utilisateurs"], ["sauvegarde", "download", "Sauvegarde"]];
 
 export function renderSettings(main) {
   const tab = location.hash.split("/")[2] || "entreprise";
@@ -14,7 +14,7 @@ export function renderSettings(main) {
     <div id="sb"></div>`;
   $$(".settings-tabs button").forEach(b => b.onclick = () => { location.hash = `#/parametres/${b.dataset.t}`; });
   const body = $("#sb");
-  const draw = { entreprise, calcul, emails, modeles, automatisations, formulaire, prospection, integrations, sauvegarde }[tab] || entreprise;
+  const draw = { entreprise, calcul, emails, modeles, automatisations, formulaire, prospection, integrations, utilisateurs, sauvegarde }[tab] || entreprise;
   let collect = () => {};
   /** Enregistre ; `rerender=false` garde la page affichée (boutons « tester »). Lève en cas d'erreur. */
   const save = async (rerender = true) => {
@@ -246,6 +246,46 @@ function integrations(body, st, save) {
     try { await save(false); const r = await api("POST", "/pennylane/test"); $("#plRes").innerHTML = `✅ Connecté${r.company ? ` à ${h(r.company)}` : ""}`; }
     catch (e) { $("#plRes").innerHTML = `<span style="color:var(--danger)">❌ ${h(e.message)}</span>`; }
   };
+}
+
+/* -------- Utilisateurs -------- */
+function utilisateurs(body) {
+  const draw = async () => {
+    let users = [];
+    try { users = await api("GET", "/users"); } catch (e) { return fail(e); }
+    body.innerHTML = card("Comptes utilisateurs", `<p style="margin-top:0">Chaque personne se connecte avec son email et son mot de passe. Le mot de passe principal (ADMIN_PASSWORD, email vide) reste toujours valable.</p>
+      <ul class="hint" style="margin-top:0"><li><b>Administrateur</b> : accès complet.</li><li><b>Employé</b> : devis, contacts, demandes, production, planning, achats, stock — sans prix d'achat, coefficients ni marges, et sans accès aux paramètres, tarifs, facturation et statistiques.</li></ul>
+      <table class="t"><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Dernière connexion</th><th></th></tr></thead><tbody>
+      ${users.map(u => `<tr data-u="${u.id}" class="${u.active ? "" : "muted"}"><td><b>${h(u.name)}</b>${u.active ? "" : " (désactivé)"}</td><td>${h(u.email)}</td><td>${badge(S.roles?.[u.role] || u.role, u.role === "admin" ? "violet" : "info")}</td>
+        <td class="muted">${u.lastLoginAt ? fmtDate(u.lastLoginAt, true) : "jamais"}</td><td class="r"><button class="btn sm" data-ed>${icon("pen", "sm")} Modifier</button></td></tr>`).join("")
+        || `<tr><td colspan="5" class="empty">Aucun compte. Créez un compte pour chaque collaborateur.</td></tr>`}</tbody></table>`,
+      `<button class="btn primary sm" id="nu">${icon("plus", "sm")} Ajouter</button>`);
+    $("#nu").onclick = () => userModal({}, draw);
+    $$("[data-u]", body).forEach(r => { $("[data-ed]", r).onclick = () => userModal(users.find(u => u.id === r.dataset.u), draw); });
+  };
+  draw();
+}
+function userModal(u, done) {
+  const isNew = !u.id;
+  modal({
+    title: isNew ? "Nouveau compte" : `Modifier ${u.name}`,
+    body: `<div class="grid g2"><label class="f"><span>Nom</span><input type="text" id="un" value="${h(u.name)}"></label>
+      <label class="f"><span>Email</span><input type="email" id="ue" value="${h(u.email)}"></label>
+      <label class="f"><span>Rôle</span><select id="ur">${Object.entries(S.roles || { admin: "Administrateur", employe: "Employé" }).map(([k, l]) => `<option value="${k}" ${k === (u.role || "employe") ? "selected" : ""}>${h(l)}</option>`).join("")}</select></label>
+      <label class="f"><span>${isNew ? "Mot de passe" : "Nouveau mot de passe"}</span><input type="text" id="up" autocomplete="new-password" placeholder="${isNew ? "8 caractères minimum" : "laisser vide pour ne pas changer"}"></label></div>
+      ${isNew ? "" : `<label class="check" style="margin-top:10px"><input type="checkbox" id="ua" ${u.active ? "checked" : ""}> Compte actif</label>`}
+      <p class="hint">Communiquez le mot de passe à la personne ; elle se connecte sur la même adresse que vous.</p>`,
+    actions: [...(isNew ? [] : [{ label: "Supprimer", cls: "danger ghost", onClick: async () => {
+      if (!(await confirmBox(`Supprimer le compte de ${u.name} ?`, "La personne ne pourra plus se connecter.", { danger: true, label: "Supprimer" }))) return false;
+      await api("DELETE", `/users/${u.id}`); done();
+    } }]), { label: "Annuler" }, { label: "Enregistrer", cls: "primary", onClick: async el => {
+      const b = { name: $("#un", el).value, email: $("#ue", el).value, role: $("#ur", el).value };
+      if ($("#up", el).value) b.password = $("#up", el).value;
+      if (!isNew) b.active = $("#ua", el).checked;
+      await api(isNew ? "POST" : "PUT", isNew ? "/users" : `/users/${u.id}`, b);
+      toast("Compte enregistré"); done();
+    } }],
+  });
 }
 
 /* -------- Sauvegarde -------- */

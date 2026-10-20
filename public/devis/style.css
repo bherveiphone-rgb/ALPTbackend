@@ -413,3 +413,24 @@ kbd { font-family: inherit; font-size: 11px; background: var(--surface-2); borde
 
 @media (max-width: 1100px) { .profile { grid-template-columns: 1fr; } }
 @media (max-width: 860px) { [style*="grid-column:span"] { grid-column: auto !important; } }
+
+/* ---------- Planning & stock ---------- */
+.danger { color: var(--danger); }
+.plan-wrap { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+.plan-todo .card-b { min-height: 120px; max-height: 70vh; overflow: auto; }
+.plan-scroll { overflow-x: auto; }
+table.plan { border-collapse: collapse; width: 100%; min-width: 720px; table-layout: fixed; }
+table.plan th, table.plan td { border: 1px solid var(--border); padding: 8px; vertical-align: top; text-align: left; }
+table.plan thead th { background: var(--surface-2, #f6f7fb); font-size: 12.5px; }
+table.plan tbody th { width: 150px; font-weight: 500; }
+table.plan .today { background: var(--primary-50); }
+table.plan td { height: 92px; }
+.drop-zone.over { outline: 2px dashed var(--primary); outline-offset: -3px; background: var(--primary-50); }
+.job { background: #fff; border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: 8px; padding: 6px 8px; margin-top: 6px; font-size: 12px; cursor: grab; line-height: 1.35; box-shadow: var(--shadow); }
+.job.late { border-left-color: var(--danger); background: var(--danger-50); }
+.job.dragging { opacity: .45; }
+.job .i { width: 13px; height: 13px; vertical-align: -2px; margin-left: 3px; }
+.load { height: 5px; border-radius: 9px; background: var(--border); overflow: hidden; }
+.load i { display: block; height: 100%; background: var(--success); }
+.load.over i { background: var(--danger); }
+@media (max-width: 900px) { .plan-wrap { grid-template-columns: 1fr; } }

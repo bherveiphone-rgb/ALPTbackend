@@ -1,5 +1,5 @@
 /* Éditeur de devis : lignes, marquages, calcul en direct, BAT, échanges. */
-import { S, api, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, ago, uid, num, clone, uploadFile, bindDrop, lightbox, pickFiles } from "./ui.js";
+import { S, api, isEmp, h, $, $$, icon, badge, toast, fail, modal, confirmBox, fmtEUR, fmtDate, ago, uid, num, clone, uploadFile, bindDrop, lightbox, pickFiles } from "./ui.js";
 import { computeQuote, lineQty, resolveFormat, lineIncluded, QUOTE_STATUSES, BAT_STATUSES, batStatusOf } from "./pricing.js";
 import { reloadQuotes, clientModal, clientSnapshot, CLIENT_FIELDS, statusBadge, batBadge, newQuote } from "./app.js";
 import { emailComposer, taskModal, activityModal } from "./contacts.js";
@@ -58,7 +58,7 @@ async function save(silent = false) {
   } catch (e) { fail(e); return false; }
 }
 function load(q) {
-  E.q = q;
+  E.q = q; E.c = null;
   E.techniques = q.techniques || S.techniques;
   // une technique ajoutée depuis la création du devis reste disponible
   for (const t of S.techniques) if (!E.techniques.some(x => x.id === t.id)) E.techniques.push(t);
@@ -253,7 +253,7 @@ export function articlePicker(onPick, universe = "textile") {
       <td style="width:56px"><div class="thumb">${a.image ? `<img src="${h(a.image)}">` : icon(universe === "objet" ? "sparkle" : "shirt", "sm")}</div></td>
       <td><b>${h(a.name)}</b><br><small>${h([a.ref, a.brand, a.category].filter(Boolean).join(" · "))}</small></td>
       <td><small>${h((a.colors || []).slice(0, 4).join(", "))}${(a.colors || []).length > 4 ? "…" : ""}</small></td>
-      <td class="r num"><small class="muted">achat ${fmtEUR(a.cost)}</small></td></tr>`).join("")}</tbody></table>`
+      <td class="r num">${isEmp() ? "" : `<small class="muted">achat ${fmtEUR(a.cost)}</small>`}</td></tr>`).join("")}</tbody></table>`
       : `<div class="empty">Aucune référence trouvée. <a href="#/references">Gérer les références</a></div>`;
     $$("[data-a]", m.el).forEach(r => r.onclick = () => { m.close(); onPick(S.catalog.find(a => a.id === r.dataset.a)); });
   };
@@ -325,11 +325,11 @@ function drawLines() {
         <span data-alt="${l.id}" class="muted"></span>
       </div>
       <div><div class="section-lbl">${isPrint ? "Quantité (exemplaires)" : uni === "objet" ? "Quantité" : "Quantités par taille"} ${isPrint || uni === "objet" ? "" : `<button class="link-btn" data-act="addsize" style="font-size:11.5px;text-transform:none;letter-spacing:0">+ taille</button>`}</div>
-        <div class="sizes">${sizes.map(s => `<label class="size-cell"><span>${h(s)}</span><input type="number" min="0" inputmode="numeric" data-size="${h(s)}" value="${l.sizes?.[s] || ""}" placeholder="0">${num(l.sizeSurcharges?.[s]) ? `<small class="sur">+${fmtEUR(l.sizeSurcharges[s])}</small>` : ""}</label>`).join("")}</div>
+        <div class="sizes">${sizes.map(s => `<label class="size-cell"><span>${h(s)}</span><input type="number" min="0" inputmode="numeric" data-size="${h(s)}" value="${l.sizes?.[s] || ""}" placeholder="0">${!isEmp() && num(l.sizeSurcharges?.[s]) ? `<small class="sur">+${fmtEUR(l.sizeSurcharges[s])}</small>` : ""}</label>`).join("")}</div>
       </div>
       ${l.supplied ? "" : `<div><div class="section-lbl">${uni === "objet" ? "Objet" : "Textile"}</div><div class="textile-row">
-        <label class="f"><span>Prix d'achat HT</span><div class="input-group"><input type="number" class="sm" step="0.01" data-f="cost" value="${h(l.cost ?? "")}"><span class="addon">€</span></div></label>
-        <label class="f"><span>Coefficient</span><div class="input-group"><input type="number" class="sm" step="0.05" data-f="coef" value="${h(l.coef ?? "")}" placeholder="${h(S.settings.defaultCoef)}"><span class="addon">×</span></div></label>
+        ${isEmp() ? "" : `<label class="f"><span>Prix d'achat HT</span><div class="input-group"><input type="number" class="sm" step="0.01" data-f="cost" value="${h(l.cost ?? "")}"><span class="addon">€</span></div></label>
+        <label class="f"><span>Coefficient</span><div class="input-group"><input type="number" class="sm" step="0.05" data-f="coef" value="${h(l.coef ?? "")}" placeholder="${h(S.settings.defaultCoef)}"><span class="addon">×</span></div></label>`}
         <label class="f"><span>PU vente HT <small class="faint">(forcer)</small></span><div class="input-group"><input type="number" class="sm ${num(l.priceOverride) !== null ? "ov" : ""}" step="0.01" data-f="priceOverride" value="${h(l.priceOverride ?? "")}" data-tu="${l.id}"><span class="addon">€</span></div></label>
         <div class="f"><span style="display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Remise qté</span><div data-disc="${l.id}" style="height:30px;display:flex;align-items:center"></div></div>
       </div></div>`}
@@ -510,8 +510,23 @@ function drawSetups(c) {
 
 /* -------- Recalcul en direct -------- */
 function recalc(redrawSetups = true) {
+  // Compte employé : les prix d'achat ne sont pas dans le navigateur, le serveur calcule
+  if (isEmp()) {
+    if (!E.c && E.q.computed) applyComputed(E.c = E.q.computed, redrawSetups);
+    clearTimeout(E.previewTimer);
+    const seq = E.previewSeq = (E.previewSeq || 0) + 1;
+    E.previewTimer = setTimeout(async () => {
+      try {
+        const c = await api("POST", "/quotes/preview", { quote: E.q });
+        if (seq === E.previewSeq && E.q) { E.c = c; applyComputed(c, redrawSetups); }
+      } catch (e) { fail(e); }
+    }, 200);
+    return;
+  }
+  applyComputed(E.c = computeQuote(E.q, E.techniques, S.settings), redrawSetups);
+}
+function applyComputed(c, redrawSetups = true) {
   const q = E.q;
-  const c = E.c = computeQuote(q, E.techniques, S.settings);
   const T = c.totals;
   $("#qtyTotal").textContent = `${T.qty} pièce${T.qty > 1 ? "s" : ""} au total`;
 
@@ -543,7 +558,7 @@ function recalc(redrawSetups = true) {
       ${src?.supplied ? "" : `<span><span class="k">${l.universe === "objet" ? "Objet" : "Textile"}</span> <span class="num">${fmtEUR(l.textileUnit)}</span></span>`}
       ${l.persos.length ? `<span><span class="k">Marquage</span> <span class="num">${fmtEUR(l.persoUnit)}</span></span>` : ""}
       <span><span class="k">PU HT</span> <span class="v num">${fmtEUR(l.unit)}</span></span>
-      <span title="Marge sur la ligne (hors frais fixes)"><span class="k">Marge</span> <span class="num" style="color:${lm < 25 ? "var(--danger)" : "var(--success)"}">${lm} %</span></span>
+      ${isEmp() ? "" : `<span title="Marge sur la ligne (hors frais fixes)"><span class="k">Marge</span> <span class="num" style="color:${lm < 25 ? "var(--danger)" : "var(--success)"}">${lm} %</span></span>`}
       <span><span class="k">Total HT</span> <span class="v num" style="font-size:15px">${fmtEUR(l.total)}</span></span>`;
   }
   for (const f of c.fees) {
@@ -574,11 +589,11 @@ function drawSummary(c) {
     ${row("Total TTC", fmtEUR(T.ttc), "total")}
     ${T.deposit ? row(`Acompte ${T.depositPct} %`, fmtEUR(T.deposit), "sub") : ""}
     ${T.qty ? row("Prix moyen / pièce HT", fmtEUR(T.ht / T.qty), "sub") : ""}
-    <div class="margin-box">
+    ${isEmp() ? "" : `<div class="margin-box">
       <div class="row between"><b>${icon("lock", "sm")} Marge estimée</b><b class="num" style="color:${T.marginPct < 25 ? "var(--danger)" : "var(--success)"}">${fmtEUR(T.margin)} · ${T.marginPct} %</b></div>
       <div class="margin-bar"><i style="width:${mp}%"></i></div>
       <small class="muted">Coût de revient estimé ${fmtEUR(T.cost)} (textile + % de coût des techniques). Visible uniquement par vous.</small>
-    </div>
+    </div>`}
     ${c.warnings.length ? `<div class="warn-list">${c.warnings.map(w => `<div>⚠ ${h(w)}</div>`).join("")}</div>` : ""}
     ${q.production || q.payment?.status ? `<div class="row" style="margin-top:12px;gap:6px">${q.production ? `<a class="chip" href="#/production">${icon("brush", "sm")} ${h(S.settings.productionStages.find(s => s.key === q.production.stage)?.label || "")}</a><a class="chip" href="#/fiche/${q.id}">${icon("print", "sm")} Fiche de fabrication</a>` : ""}${q.payment?.status ? `<a class="chip ${q.payment.status === "paye" ? "green" : ""}" href="#/facturation">${icon("euro", "sm")} ${{ non_paye: "Non payé", acompte: "Acompte reçu", paye: "Payé" }[q.payment.status]}</a>` : ""}</div>` : ""}
     <div class="row" style="margin-top:14px">

@@ -114,7 +114,7 @@ export async function templatePicker(onPick) {
     const t = list.find(x => x.id === r.dataset.t);
     m.close();
     const lines = clone(t.lines).map(l => ({ ...l, id: uid("l"), ordered: false, perso: (l.perso || []).map(p => ({ ...p, id: uid("p") })) }));
-    onPick({ title: t.title, lines, fees: clone(t.fees || []).map(f => ({ ...f, id: uid("fe") })), notes: t.notes, discountPct: t.discountPct, shipping: t.shipping });
+    onPick({ templateId: t.id, title: t.title, lines, fees: clone(t.fees || []).map(f => ({ ...f, id: uid("fe") })), notes: t.notes, discountPct: t.discountPct, shipping: t.shipping });
   });
   $$("[data-del]", m.el).forEach(b => b.onclick = async () => {
     if (!(await confirmBox("Supprimer ce modèle ?", "Les devis déjà créés ne sont pas affectés.", { danger: true, label: "Supprimer" }))) return;
